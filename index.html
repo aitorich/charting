@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Simple Chart Test</title>
+  <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+  <style>
+    body { margin: 0; padding: 0; }
+    #chart {
+      width: 100%;
+      height: 100vh;
+    }
+  </style>
+</head>
+<body>
+
+<div id="chart"></div>
+
+<script>
+  const chart = LightweightCharts.createChart(document.getElementById('chart'), {
+    width: window.innerWidth,
+    height: window.innerHeight,
+    layout: {
+      background: { color: '#FFFFFF' },
+      textColor: '#000',
+    },
+    grid: {
+      vertLines: { color: '#eee' },
+      horzLines: { color: '#eee' },
+    },
+    timeScale: {
+      timeVisible: true,
+      secondsVisible: true,
+    },
+  });
+
+  const lineSeries = chart.addLineSeries();
+
+  // Example hard-coded data
+  lineSeries.setData([
+    { time: '2024-04-20', value: 500 },
+    { time: '2024-04-21', value: 510 },
+    { time: '2024-04-22', value: 490 },
+    { time: '2024-04-23', value: 520 },
+    { time: '2024-04-24', value: 530 },
+    { time: '2024-04-25', value: 540 },
+  ]);
+</script>
+
+</body>
+</html>
