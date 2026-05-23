@@ -1,169 +1,190 @@
 // This Pine Script™ source code is subject to the terms of the Mozilla Public License 2.0
-// © SMT Quarter Sequences Indicator
-// Compares NQ/YM (or any correlated pair) within 4HR candle quarters (1H candles)
+// © SMT Quarter Sequences (4HR) - NQ/YM
+// Clean professional design. SMT lines + minimal inline text.
+// Background color bands show quarters. No floating labels.
 
-//@version=5
-indicator("SMT Quarter Sequences (4HR)", overlay=true, max_labels_count=500, max_boxes_count=500)
+//@version=6
+indicator("SMT Quarter Sequences (4HR)", overlay=true, max_lines_count=500, max_labels_count=200)
 
 // ─── INPUTS ───────────────────────────────────────────────────────────────────
-string symA_input   = input.symbol("NQ1!", "Symbol A (Primary)", group="Symbols")
-string symB_input   = input.symbol("YM1!", "Symbol B (Correlated)", group="Symbols")
+string symA_input = input.symbol("NQ1!", "Symbol A", group="Symbols")
+string symB_input = input.symbol("YM1!", "Symbol B", group="Symbols")
 
-color bullColor     = input.color(color.new(color.green, 20), "Bullish SMT Color", group="Display")
-color bearColor     = input.color(color.new(color.red, 20), "Bearish SMT Color", group="Display")
-bool showLabels     = input.bool(true, "Show Quarter Labels", group="Display")
-bool showBoxes      = input.bool(true, "Show 4HR Candle Boxes", group="Display")
-bool showTable      = input.bool(true, "Show Summary Table", group="Display")
+color bullColor   = input.color(color.new(#00e676, 0), "Bullish SMT", group="Style")
+color bearColor   = input.color(color.new(#ff1744, 0), "Bearish SMT", group="Style")
+int lineWidth     = input.int(2, "Line Width", minval=1, maxval=5, group="Style")
+bool showTable    = input.bool(true, "Show Table", group="Style")
 
-// ─── TIMEFRAME VALIDATION ─────────────────────────────────────────────────────
-// This indicator must run on 1H chart to divide 4HR into quarters
-isSupportedTF = timeframe.period == "60"
+// ─── TIMEFRAME CHECK ──────────────────────────────────────────────────────────
+if timeframe.period != "60"
+    runtime.error("1H chart only")
 
-if not isSupportedTF
-    runtime.error("This indicator must be applied to a 1-Hour chart.")
+// ─── DATA ─────────────────────────────────────────────────────────────────────
+float aH = request.security(symA_input, "60", high)
+float aL = request.security(symA_input, "60", low)
+float bH = request.security(symB_input, "60", high)
+float bL = request.security(symB_input, "60", low)
 
-// ─── DATA REQUESTS ────────────────────────────────────────────────────────────
-// Request 1H data for both symbols
-[symA_open, symA_high, symA_low, symA_close] = request.security(symA_input, "60", [open, high, low, close])
-[symB_open, symB_high, symB_low, symB_close] = request.security(symB_input, "60", [open, high, low, close])
+// ─── 4HR BOUNDARY (6PM ET session aligned) ────────────────────────────────────
+int hr = hour(time, "America/New_York")
+int prevHr = hour(time[1], "America/New_York")
+int sinceOpen = (hr - 18 + 24) % 24
+bool newBlock = (sinceOpen % 4 == 0) and (hr != prevHr or session.isfirstbar)
 
-// Request 4H data to identify HTF candle boundaries
-[htf_open, htf_high, htf_low, htf_close] = request.security(symA_input, "240", [open, high, low, close])
-bool isNew4H = request.security(symA_input, "240", timeframe.change("240"))
+// Key blocks
+bool is2AM  = hr >= 2 and hr < 6
+bool is6AM  = hr >= 6 and hr < 10
+bool is10AM = hr >= 10 and hr < 14
+bool isKey  = is2AM or is6AM or is10AM
 
-// ─── QUARTER TRACKING ─────────────────────────────────────────────────────────
-var int quarterCount = 0  // 0-3 representing Q1-Q4
-var float[] symA_highs = array.new_float(4, na)
-var float[] symA_lows  = array.new_float(4, na)
-var float[] symB_highs = array.new_float(4, na)
-var float[] symB_lows  = array.new_float(4, na)
+// ─── QUARTER INDEX ────────────────────────────────────────────────────────────
+var int q = 0
+var float q1aH = na, var float q1aL = na, var int q1b = na
+var float q2aH = na, var float q2aL = na, var int q2b = na
+var float q3aH = na, var float q3aL = na, var int q3b = na
+var float q1bH = na, var float q1bL = na
+var float q2bH = na, var float q2bL = na
+var float q3bH = na, var float q3bL = na
 
-// Reset on new 4HR candle
-if isNew4H
-    quarterCount := 0
-    array.fill(symA_highs, na)
-    array.fill(symA_lows, na)
-    array.fill(symB_highs, na)
-    array.fill(symB_lows, na)
+if newBlock
+    q := 0
+    q1aH := na, q1aL := na, q1b := na
+    q2aH := na, q2aL := na, q2b := na
+    q3aH := na, q3aL := na, q3b := na
+    q1bH := na, q1bL := na
+    q2bH := na, q2bL := na
+    q3bH := na, q3bL := na
 
-// Store quarter data
-if quarterCount < 4
-    array.set(symA_highs, quarterCount, symA_high)
-    array.set(symA_lows, quarterCount, symA_low)
-    array.set(symB_highs, quarterCount, symB_high)
-    array.set(symB_lows, quarterCount, symB_low)
+if q == 0
+    q1aH := aH, q1aL := aL, q1b := bar_index
+    q1bH := bH, q1bL := bL
+else if q == 1
+    q2aH := aH, q2aL := aL, q2b := bar_index
+    q2bH := bH, q2bL := bL
+else if q == 2
+    q3aH := aH, q3aL := aL, q3b := bar_index
+    q3bH := bH, q3bL := bL
 
-// ─── SMT DETECTION LOGIC ──────────────────────────────────────────────────────
-// SMT Divergence: One makes new high/low, the other fails to confirm
+// ─── PRIOR HIGHS/LOWS ────────────────────────────────────────────────────────
+float pHighA = na, float pLowA = na
+float pHighB = na, float pLowB = na
+int pHighBar = na, int pLowBar = na
 
-// Compare current quarter to previous quarter within same 4HR candle
-bool bullishSMT = false  // A makes lower low, B does NOT (or vice versa) = bullish
-bool bearishSMT = false  // A makes higher high, B does NOT (or vice versa) = bearish
+if q == 1 and not na(q1aH)
+    pHighA := q1aH, pLowA := q1aL
+    pHighB := q1bH, pLowB := q1bL
+    pHighBar := q1b, pLowBar := q1b
+else if q == 2 and not na(q1aH) and not na(q2aH)
+    pHighA := math.max(q1aH, q2aH)
+    pLowA  := math.min(q1aL, q2aL)
+    pHighB := math.max(q1bH, q2bH)
+    pLowB  := math.min(q1bL, q2bL)
+    pHighBar := q1aH >= q2aH ? q1b : q2b
+    pLowBar  := q1aL <= q2aL ? q1b : q2b
+else if q == 3 and not na(q1aH) and not na(q2aH) and not na(q3aH)
+    pHighA := math.max(q1aH, math.max(q2aH, q3aH))
+    pLowA  := math.min(q1aL, math.min(q2aL, q3aL))
+    pHighB := math.max(q1bH, math.max(q2bH, q3bH))
+    pLowB  := math.min(q1bL, math.min(q2bL, q3bL))
+    pHighBar := q1aH >= q2aH and q1aH >= q3aH ? q1b : q2aH >= q3aH ? q2b : q3b
+    pLowBar  := q1aL <= q2aL and q1aL <= q3aL ? q1b : q2aL <= q3aL ? q2b : q3b
 
-if quarterCount > 0 and quarterCount < 4
-    float prevA_high = array.get(symA_highs, quarterCount - 1)
-    float prevA_low  = array.get(symA_lows, quarterCount - 1)
-    float prevB_high = array.get(symB_highs, quarterCount - 1)
-    float prevB_low  = array.get(symB_lows, quarterCount - 1)
-    
-    float currA_high = symA_high
-    float currA_low  = symA_low
-    float currB_high = symB_high
-    float currB_low  = symB_low
-    
-    // Bearish SMT: A makes higher high, B fails (or B makes HH, A fails)
-    bool a_HH = currA_high > prevA_high
-    bool b_HH = currB_high > prevB_high
-    bearishSMT := (a_HH and not b_HH) or (b_HH and not a_HH)
-    
-    // Bullish SMT: A makes lower low, B fails (or B makes LL, A fails)
-    bool a_LL = currA_low < prevA_low
-    bool b_LL = currB_low < prevB_low
-    bullishSMT := (a_LL and not b_LL) or (b_LL and not a_LL)
+// ─── SMT DETECTION ───────────────────────────────────────────────────────────
+bool bear = false
+bool bull = false
 
-// ─── PLOTTING & LABELS ───────────────────────────────────────────────────────
-// Quarter label text
-string qLabel = quarterCount == 0 ? "Q1" : quarterCount == 1 ? "Q2" : quarterCount == 2 ? "Q3" : "Q4"
+if q >= 1 and not na(pHighA) and not na(pHighB)
+    if (aH > pHighA and not (bH > pHighB)) or (bH > pHighB and not (aH > pHighA))
+        bear := true
 
-// Background color for SMT divergence quarters
-bgcolor(bullishSMT ? color.new(bullColor, 85) : na, title="Bullish SMT BG")
-bgcolor(bearishSMT ? color.new(bearColor, 85) : na, title="Bearish SMT BG")
+if q >= 1 and not na(pLowA) and not na(pLowB)
+    if (aL < pLowA and not (bL < pLowB)) or (bL < pLowB and not (aL < pLowA))
+        bull := true
 
-// Labels
-if showLabels and bullishSMT
-    label.new(bar_index, low, qLabel + "\n🟢 Bull SMT", 
-         style=label.style_label_up, color=bullColor, textcolor=color.white, size=size.small)
+// ─── DRAW: CLEAN SMT LINES WITH MIDPOINT TEXT ────────────────────────────────
+string qTag = q == 1 ? "Q2" : q == 2 ? "Q3" : q == 3 ? "Q4" : ""
 
-if showLabels and bearishSMT
-    label.new(bar_index, high, qLabel + "\n🔴 Bear SMT", 
-         style=label.style_label_down, color=bearColor, textcolor=color.white, size=size.small)
+if bear and not na(pHighBar)
+    line.new(pHighBar, pHighA, bar_index, aH, color=bearColor, width=lineWidth, style=line.style_solid)
+    int mid = math.round((pHighBar + bar_index) / 2)
+    label.new(mid, (pHighA + aH) / 2, qTag, style=label.style_none, textcolor=bearColor, size=size.small)
 
-// ─── 4HR BOUNDARY VERTICAL LINES ─────────────────────────────────────────────
-if isNew4H and showBoxes
-    line.new(bar_index, high, bar_index, low, extend=extend.both, 
-         color=color.new(color.gray, 60), style=line.style_dashed, width=1)
+if bull and not na(pLowBar)
+    line.new(pLowBar, pLowA, bar_index, aL, color=bullColor, width=lineWidth, style=line.style_solid)
+    int mid = math.round((pLowBar + bar_index) / 2)
+    label.new(mid, (pLowA + aL) / 2, qTag, style=label.style_none, textcolor=bullColor, size=size.small)
 
-// ─── QUARTER COUNTER INCREMENT ────────────────────────────────────────────────
-if not isNew4H
-    quarterCount += 1
-else
-    quarterCount := 1  // First bar after reset is Q1, move to next
+// ─── BACKGROUND: QUARTER COLORS (key sessions only) ──────────────────────────
+color bgClr = na
+if isKey
+    if q == 0
+        bgClr := color.new(#9e9e9e, 92)
+    else if q == 1
+        bgClr := color.new(#ff5252, 92)
+    else if q == 2
+        bgClr := color.new(#69f0ae, 92)
+    else if q == 3
+        bgClr := color.new(#448aff, 92)
+bgcolor(bgClr, title="Quarter BG")
 
-// ─── SUMMARY TABLE ────────────────────────────────────────────────────────────
-var table summaryTable = table.new(position.top_right, 3, 6, bgcolor=color.new(color.black, 80), 
-     border_width=1, border_color=color.gray)
+// ─── 4HR SEPARATOR ───────────────────────────────────────────────────────────
+if newBlock
+    color sepClr = isKey ? color.new(#ffcc00, 40) : color.new(color.gray, 80)
+    line.new(bar_index, high, bar_index, low, extend=extend.both, color=sepClr, style=line.style_dotted, width=1)
 
-// Count SMT occurrences per quarter
-var int bullQ1 = 0, var int bullQ2 = 0, var int bullQ3 = 0, var int bullQ4 = 0
-var int bearQ1 = 0, var int bearQ2 = 0, var int bearQ3 = 0, var int bearQ4 = 0
+// ─── INCREMENT ───────────────────────────────────────────────────────────────
+if not newBlock
+    q := math.min(q + 1, 3)
 
-if bullishSMT
-    if quarterCount == 1
-        bullQ1 += 1
-    else if quarterCount == 2
-        bullQ2 += 1
-    else if quarterCount == 3
-        bullQ3 += 1
+// ─── TABLE ───────────────────────────────────────────────────────────────────
+var int bQ2 = 0, var int bQ3 = 0, var int bQ4 = 0
+var int rQ2 = 0, var int rQ3 = 0, var int rQ4 = 0
+var int kB = 0, var int kR = 0
+
+if bull
+    if q == 1
+        bQ2 += 1
+    else if q == 2
+        bQ3 += 1
     else
-        bullQ4 += 1
+        bQ4 += 1
+    if isKey
+        kB += 1
 
-if bearishSMT
-    if quarterCount == 1
-        bearQ1 += 1
-    else if quarterCount == 2
-        bearQ2 += 1
-    else if quarterCount == 3
-        bearQ3 += 1
+if bear
+    if q == 1
+        rQ2 += 1
+    else if q == 2
+        rQ3 += 1
     else
-        bearQ4 += 1
+        rQ4 += 1
+    if isKey
+        kR += 1
+
+var table t = table.new(position.top_right, 3, 6, bgcolor=color.new(#000000, 70), border_width=1, border_color=color.new(#333333, 0))
 
 if showTable and barstate.islast
-    table.cell(summaryTable, 0, 0, "Quarter", text_color=color.white, text_size=size.small)
-    table.cell(summaryTable, 1, 0, "Bull SMT", text_color=bullColor, text_size=size.small)
-    table.cell(summaryTable, 2, 0, "Bear SMT", text_color=bearColor, text_size=size.small)
-    
-    table.cell(summaryTable, 0, 1, "Q1", text_color=color.white, text_size=size.small)
-    table.cell(summaryTable, 1, 1, str.tostring(bullQ1), text_color=color.white, text_size=size.small)
-    table.cell(summaryTable, 2, 1, str.tostring(bearQ1), text_color=color.white, text_size=size.small)
-    
-    table.cell(summaryTable, 0, 2, "Q2", text_color=color.white, text_size=size.small)
-    table.cell(summaryTable, 1, 2, str.tostring(bullQ2), text_color=color.white, text_size=size.small)
-    table.cell(summaryTable, 2, 2, str.tostring(bearQ2), text_color=color.white, text_size=size.small)
-    
-    table.cell(summaryTable, 0, 3, "Q3", text_color=color.white, text_size=size.small)
-    table.cell(summaryTable, 1, 3, str.tostring(bullQ3), text_color=color.white, text_size=size.small)
-    table.cell(summaryTable, 2, 3, str.tostring(bearQ3), text_color=color.white, text_size=size.small)
-    
-    table.cell(summaryTable, 0, 4, "Q4", text_color=color.white, text_size=size.small)
-    table.cell(summaryTable, 1, 4, str.tostring(bullQ4), text_color=color.white, text_size=size.small)
-    table.cell(summaryTable, 2, 4, str.tostring(bearQ4), text_color=color.white, text_size=size.small)
-    
-    int totalBull = bullQ1 + bullQ2 + bullQ3 + bullQ4
-    int totalBear = bearQ1 + bearQ2 + bearQ3 + bearQ4
-    table.cell(summaryTable, 0, 5, "TOTAL", text_color=color.yellow, text_size=size.small)
-    table.cell(summaryTable, 1, 5, str.tostring(totalBull), text_color=color.yellow, text_size=size.small)
-    table.cell(summaryTable, 2, 5, str.tostring(totalBear), text_color=color.yellow, text_size=size.small)
+    table.cell(t, 0, 0, "Sweep", text_color=#ffffff, text_size=size.small)
+    table.cell(t, 1, 0, "Bull", text_color=bullColor, text_size=size.small)
+    table.cell(t, 2, 0, "Bear", text_color=bearColor, text_size=size.small)
+    table.cell(t, 0, 1, "Q2>Q1", text_color=#aaaaaa, text_size=size.small)
+    table.cell(t, 1, 1, str.tostring(bQ2), text_color=#ffffff, text_size=size.small)
+    table.cell(t, 2, 1, str.tostring(rQ2), text_color=#ffffff, text_size=size.small)
+    table.cell(t, 0, 2, "Q3>Q1-2", text_color=#aaaaaa, text_size=size.small)
+    table.cell(t, 1, 2, str.tostring(bQ3), text_color=#ffffff, text_size=size.small)
+    table.cell(t, 2, 2, str.tostring(rQ3), text_color=#ffffff, text_size=size.small)
+    table.cell(t, 0, 3, "Q4>Q1-3", text_color=#aaaaaa, text_size=size.small)
+    table.cell(t, 1, 3, str.tostring(bQ4), text_color=#ffffff, text_size=size.small)
+    table.cell(t, 2, 3, str.tostring(rQ4), text_color=#ffffff, text_size=size.small)
+    table.cell(t, 0, 4, "TOTAL", text_color=#ffcc00, text_size=size.small)
+    table.cell(t, 1, 4, str.tostring(bQ2+bQ3+bQ4), text_color=#ffcc00, text_size=size.small)
+    table.cell(t, 2, 4, str.tostring(rQ2+rQ3+rQ4), text_color=#ffcc00, text_size=size.small)
+    table.cell(t, 0, 5, "2/6/10AM", text_color=#ff9800, text_size=size.small)
+    table.cell(t, 1, 5, str.tostring(kB), text_color=#ff9800, text_size=size.small)
+    table.cell(t, 2, 5, str.tostring(kR), text_color=#ff9800, text_size=size.small)
 
-// ─── ALERTS ───────────────────────────────────────────────────────────────────
-alertcondition(bullishSMT, title="Bullish SMT Divergence", message="Bullish SMT detected in {{ticker}} at " + qLabel)
-alertcondition(bearishSMT, title="Bearish SMT Divergence", message="Bearish SMT detected in {{ticker}} at " + qLabel)
+// ─── ALERTS ──────────────────────────────────────────────────────────────────
+alertcondition(bull and isKey, title="Key Bull SMT", message="Bull SMT key session {{ticker}}")
+alertcondition(bear and isKey, title="Key Bear SMT", message="Bear SMT key session {{ticker}}")
+alertcondition(bull, title="Bull SMT", message="Bull SMT {{ticker}}")
+alertcondition(bear, title="Bear SMT", message="Bear SMT {{ticker}}")
