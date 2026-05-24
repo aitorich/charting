@@ -1,0 +1,289 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © random55598
+
+// SMT Quarter Sequences (1HR) - NQ/YM
+// 4x15m quarters within each 1HR block
+// Step 1: Fractal C2 closure (Q2 sweeps Q1 high/low + closes back inside)
+// Step 2: Armed next hourly block → track SMT divergence quarter-by-quarter
+// + PSP Candle detection on 15m quarters
+// Runs 24/7 — no time window restriction
+
+//@version=6
+indicator("SMT Quarter Sequences (1HR)", overlay=true, max_lines_count=500, max_labels_count=500)
+
+// ─── SYMBOLS ──────────────────────────────────────────────────────────────────
+string symA = input.symbol("NQ1!", "Symbol A", group="Symbols")
+string symB = input.symbol("YM1!", "Symbol B", group="Symbols")
+
+// ─── DISPLAY ──────────────────────────────────────────────────────────────────
+int displayDays = input.int(1, "Show Last N Days", minval=1, maxval=10, group="Display")
+
+// ─── C2 CLOSURE STYLE ─────────────────────────────────────────────────────────
+bool showC2       = input.bool(true, "Show C2 Closure", group="C2 Closure")
+color c2BullColor = input.color(color.new(#00e676, 0), "C2 Bull Color", group="C2 Closure")
+color c2BearColor = input.color(color.new(#ff1744, 0), "C2 Bear Color", group="C2 Closure")
+int c2LineWidth   = input.int(2, "C2 Line Width", minval=1, maxval=5, group="C2 Closure")
+string c2LineStyleStr = input.string("Solid", "C2 Line Style", options=["Solid", "Dashed", "Dotted"], group="C2 Closure")
+bool showC2Label  = input.bool(true, "Show C2 Label", group="C2 Closure")
+
+// ─── SMT LINE STYLE ───────────────────────────────────────────────────────────
+color bullLineColor = input.color(color.new(#00e676, 0), "Bull Line Color", group="SMT Line")
+color bearLineColor = input.color(color.new(#ff1744, 0), "Bear Line Color", group="SMT Line")
+int smtLineWidth    = input.int(2, "Line Width", minval=1, maxval=5, group="SMT Line")
+string smtLineStyle = input.string("Solid", "Line Style", options=["Solid", "Dashed", "Dotted"], group="SMT Line")
+
+// ─── SMT LABEL STYLE ─────────────────────────────────────────────────────────
+bool showSmtLabel    = input.bool(true, "Show Label", group="SMT Label")
+color bullLabelColor = input.color(color.new(#00e676, 0), "Bull Label Color", group="SMT Label")
+color bearLabelColor = input.color(color.new(#ff1744, 0), "Bear Label Color", group="SMT Label")
+string smtLabelSz   = input.string("Small", "Label Size", options=["Tiny", "Small", "Normal", "Large"], group="SMT Label")
+
+// ─── SEPARATOR STYLE ──────────────────────────────────────────────────────────
+bool showSep    = input.bool(true, "Show 1HR Separators", group="Separator")
+color sepColor  = input.color(color.new(#ffcc00, 40), "Separator Color", group="Separator")
+string sepStyle = input.string("Dotted", "Separator Style", options=["Solid", "Dashed", "Dotted"], group="Separator")
+int sepWidth    = input.int(1, "Separator Width", minval=1, maxval=3, group="Separator")
+
+// ─── PSP CANDLE ────────────────────────────────────────────────────────────────
+bool showPSP      = input.bool(true, "Show PSP", group="PSP Candle")
+color pspColor    = input.color(color.new(#ff1744, 80), "PSP BG Color", group="PSP Candle")
+bool pspBarColor  = input.bool(false, "Color PSP candle body", group="PSP Candle")
+color pspCandleClr = input.color(color.new(#e040fb, 0), "PSP Candle Color", group="PSP Candle")
+
+// ─── TABLE ────────────────────────────────────────────────────────────────────
+bool showTable = input.bool(true, "Show Table", group="Table")
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+lineStyle(string s) =>
+    s == "Dashed" ? line.style_dashed : s == "Dotted" ? line.style_dotted : line.style_solid
+
+labelSize(string s) =>
+    s == "Tiny" ? size.tiny : s == "Normal" ? size.normal : s == "Large" ? size.large : size.small
+
+// ─── DATA (15m data for NQ/YM) ────────────────────────────────────────────────
+[aH, aL, aO, aC] = request.security(symA, "15", [high, low, open, close])
+[bH, bL, bO, bC] = request.security(symB, "15", [high, low, open, close])
+
+// ─── TIMEFRAME GATE ───────────────────────────────────────────────────────────
+bool is15m = timeframe.period == "15"
+
+// ─── TIME — DETECT 1HR BLOCK BOUNDARIES ───────────────────────────────────────
+// New 1HR block starts when the hour changes
+int hr = hour(time, "America/New_York")
+int prevHr = hour(time[1], "America/New_York")
+bool newBlock = (hr != prevHr) or session.isfirstbar
+
+// ─── N DAYS DISPLAY FILTER ────────────────────────────────────────────────────
+int displayBars = displayDays * 96  // 96 fifteen-min bars per day
+bool inDisplay = bar_index >= (last_bar_index - displayBars)
+
+// ─── QUARTER STATE (within current 1HR block) ─────────────────────────────────
+var int q = 0  // 0=Q1, 1=Q2, 2=Q3, 3=Q4
+
+// Current block quarter data — Symbol A
+var float q1aH = na, var float q1aL = na, var int q1b = na
+var float q2aH = na, var float q2aL = na, var int q2b = na
+var float q3aH = na, var float q3aL = na, var int q3b = na
+var float q4aH = na, var float q4aL = na, var int q4b = na
+
+// Current block quarter data — Symbol B
+var float q1bH = na, var float q1bL = na
+var float q2bH = na, var float q2bL = na
+var float q3bH = na, var float q3bL = na
+var float q4bH = na, var float q4bL = na
+
+// Current block quarter close — Symbol A & B
+var float q2aC = na, var float q2bC = na
+
+// ─── C2 CLOSURE STATE (arms next block) ───────────────────────────────────────
+var bool armed      = false
+var bool armBull    = false  // C2 was bullish sweep closure
+var bool armBear    = false  // C2 was bearish sweep closure
+var float armLevel  = na     // The swept level (Q1 low for bull, Q1 high for bear)
+var int armBar      = na     // Bar index of the C2 closure
+
+// Previous block C2 state (carried into armed block)
+var bool prevArmed    = false
+var bool prevArmBull  = false
+var bool prevArmBear  = false
+
+// ─── BLOCK RESET ──────────────────────────────────────────────────────────────
+if is15m and newBlock
+    // Carry arm state from previous block into this block
+    prevArmed   := armed
+    prevArmBull := armBull
+    prevArmBear := armBear
+
+    // Reset arm for current block (will be set if C2 closure found)
+    armed   := false
+    armBull := false
+    armBear := false
+    armLevel := na
+    armBar  := na
+
+    // Reset quarter counter and data
+    q := 0
+    q1aH := na, q1aL := na, q1b := na
+    q2aH := na, q2aL := na, q2b := na
+    q3aH := na, q3aL := na, q3b := na
+    q4aH := na, q4aL := na, q4b := na
+    q1bH := na, q1bL := na
+    q2bH := na, q2bL := na
+    q3bH := na, q3bL := na
+    q4bH := na, q4bL := na
+    q2aC := na, q2bC := na
+
+// ─── RECORD QUARTER DATA ─────────────────────────────────────────────────────
+if is15m
+    if q == 0
+        q1aH := aH, q1aL := aL, q1b := bar_index
+        q1bH := bH, q1bL := bL
+    else if q == 1
+        q2aH := aH, q2aL := aL, q2b := bar_index
+        q2bH := bH, q2bL := bL
+        q2aC := aC, q2bC := bC
+    else if q == 2
+        q3aH := aH, q3aL := aL, q3b := bar_index
+        q3bH := bH, q3bL := bL
+    else if q == 3
+        q4aH := aH, q4aL := aL, q4b := bar_index
+        q4bH := bH, q4bL := bL
+
+// ─── C2 FRACTAL CLOSURE DETECTION (on Q2 of current block) ───────────────────
+// Bullish: Q2 low sweeps below Q1 low AND Q2 closes above Q1 low
+// Bearish: Q2 high sweeps above Q1 high AND Q2 closes below Q1 high
+bool c2Bull = false
+bool c2Bear = false
+
+if is15m and q == 1 and not na(q1aL) and not na(q1aH)
+    // Bullish C2: sweep Q1 low + close back above
+    if aL < q1aL and aC > q1aL
+        c2Bull := true
+        armed   := true
+        armBull := true
+        armLevel := q1aL
+        armBar  := bar_index
+    // Bearish C2: sweep Q1 high + close back below
+    if aH > q1aH and aC < q1aH
+        c2Bear := true
+        armed   := true
+        armBear := true
+        armLevel := q1aH
+        armBar  := bar_index
+
+// ─── DRAW C2 CLOSURE ─────────────────────────────────────────────────────────
+if is15m and c2Bull and showC2 and inDisplay
+    line.new(q1b, q1aL, bar_index, q1aL, color=c2BullColor, width=c2LineWidth, style=lineStyle(c2LineStyleStr))
+    if showC2Label
+        label.new(bar_index, aL, "C2", style=label.style_none, textcolor=c2BullColor, size=labelSize(smtLabelSz), xloc=xloc.bar_index)
+
+if is15m and c2Bear and showC2 and inDisplay
+    line.new(q1b, q1aH, bar_index, q1aH, color=c2BearColor, width=c2LineWidth, style=lineStyle(c2LineStyleStr))
+    if showC2Label
+        label.new(bar_index, aH, "C2", style=label.style_none, textcolor=c2BearColor, size=labelSize(smtLabelSz), xloc=xloc.bar_index)
+
+// ─── SMT DETECTION (only in armed blocks — the block after C2 closure) ────────
+// Compare quarter-by-quarter: if one symbol makes new high/low beyond prior quarters
+// in this block but the other doesn't → divergence
+bool bear = false
+bool bull = false
+int pHBar = na
+int pLBar = na
+float pHighA = na
+float pLowA = na
+
+if is15m and prevArmed and q >= 1
+    // Build prior high/low from earlier quarters in this block
+    if q == 1 and not na(q1aH)
+        pHighA := q1aH, pLowA := q1aL
+        pHBar := q1b, pLBar := q1b
+        float pHighB = q1bH
+        float pLowB  = q1bL
+        // Bear SMT: one makes new high, other doesn't
+        if (aH > pHighA and not (bH > pHighB)) or (bH > pHighB and not (aH > pHighA))
+            bear := true
+        // Bull SMT: one makes new low, other doesn't
+        if (aL < pLowA and not (bL < pLowB)) or (bL < pLowB and not (aL < pLowA))
+            bull := true
+
+    else if q == 2 and not na(q1aH) and not na(q2aH)
+        pHighA := math.max(q1aH, q2aH)
+        pLowA  := math.min(q1aL, q2aL)
+        pHBar := q1aH >= q2aH ? q1b : q2b
+        pLBar := q1aL <= q2aL ? q1b : q2b
+        float pHighB = math.max(q1bH, q2bH)
+        float pLowB  = math.min(q1bL, q2bL)
+        if (aH > pHighA and not (bH > pHighB)) or (bH > pHighB and not (aH > pHighA))
+            bear := true
+        if (aL < pLowA and not (bL < pLowB)) or (bL < pLowB and not (aL < pLowA))
+            bull := true
+
+    else if q == 3 and not na(q1aH) and not na(q2aH) and not na(q3aH)
+        pHighA := math.max(q1aH, math.max(q2aH, q3aH))
+        pLowA  := math.min(q1aL, math.min(q2aL, q3aL))
+        pHBar := q1aH >= q2aH and q1aH >= q3aH ? q1b : q2aH >= q3aH ? q2b : q3b
+        pLBar := q1aL <= q2aL and q1aL <= q3aL ? q1b : q2aL <= q3aL ? q2b : q3b
+        float pHighB = math.max(q1bH, math.max(q2bH, q3bH))
+        float pLowB  = math.min(q1bL, math.min(q2bL, q3bL))
+        if (aH > pHighA and not (bH > pHighB)) or (bH > pHighB and not (aH > pHighA))
+            bear := true
+        if (aL < pLowA and not (bL < pLowB)) or (bL < pLowB and not (aL < pLowA))
+            bull := true
+
+// ─── DRAW SMT (armed blocks only) ────────────────────────────────────────────
+string qTag = q == 1 ? "Q2" : q == 2 ? "Q3" : q == 3 ? "Q4" : "Q1"
+
+if is15m and bear and not na(pHBar) and inDisplay
+    line.new(pHBar, pHighA, bar_index, aH, color=bearLineColor, width=smtLineWidth, style=lineStyle(smtLineStyle))
+    if showSmtLabel
+        label.new(bar_index, aH, qTag, style=label.style_none, textcolor=bearLabelColor, size=labelSize(smtLabelSz), xloc=xloc.bar_index)
+
+if is15m and bull and not na(pLBar) and inDisplay
+    line.new(pLBar, pLowA, bar_index, aL, color=bullLineColor, width=smtLineWidth, style=lineStyle(smtLineStyle))
+    if showSmtLabel
+        label.new(bar_index, aL, qTag, style=label.style_none, textcolor=bullLabelColor, size=labelSize(smtLabelSz), xloc=xloc.bar_index)
+
+// ─── PSP DETECTION (every 15m quarter) ────────────────────────────────────────
+bool aBull = aC > aO
+bool bBull = bC > bO
+bool isPSP = is15m and (aBull != bBull) and inDisplay
+
+bgcolor(isPSP and showPSP ? pspColor : na, title="PSP BG")
+barcolor(isPSP and showPSP and pspBarColor ? pspCandleClr : na, title="PSP Bar")
+
+// ─── 1HR SEPARATOR ────────────────────────────────────────────────────────────
+if is15m and newBlock and showSep and inDisplay
+    line.new(bar_index, high, bar_index, low, extend=extend.both, color=sepColor, style=lineStyle(sepStyle), width=sepWidth)
+
+// ─── INCREMENT QUARTER ────────────────────────────────────────────────────────
+if is15m and not newBlock
+    q := math.min(q + 1, 3)
+
+// ─── TABLE ───────────────────────────────────────────────────────────────────
+var int totalBull = 0, var int totalBear = 0, var int totalC2 = 0
+
+if bull and inDisplay
+    totalBull += 1
+if bear and inDisplay
+    totalBear += 1
+if (c2Bull or c2Bear) and inDisplay
+    totalC2 += 1
+
+var table t = table.new(position.top_right, 4, 2, bgcolor=color.new(#000000, 70), border_width=1, border_color=color.new(#333333, 0))
+
+if showTable and barstate.islast
+    table.cell(t, 0, 0, str.tostring(displayDays) + "D", text_color=#ffcc00, text_size=size.small)
+    table.cell(t, 1, 0, "Bull", text_color=bullLineColor, text_size=size.small)
+    table.cell(t, 2, 0, "Bear", text_color=bearLineColor, text_size=size.small)
+    table.cell(t, 3, 0, "C2", text_color=#ff9800, text_size=size.small)
+    table.cell(t, 0, 1, "SMT", text_color=#aaaaaa, text_size=size.small)
+    table.cell(t, 1, 1, str.tostring(totalBull), text_color=#ffffff, text_size=size.small)
+    table.cell(t, 2, 1, str.tostring(totalBear), text_color=#ffffff, text_size=size.small)
+    table.cell(t, 3, 1, str.tostring(totalC2), text_color=#ffffff, text_size=size.small)
+
+// ─── ALERTS ──────────────────────────────────────────────────────────────────
+alertcondition(bull, title="Bull SMT (1HR)", message="Bull SMT 1HR Block {{ticker}}")
+alertcondition(bear, title="Bear SMT (1HR)", message="Bear SMT 1HR Block {{ticker}}")
+alertcondition(c2Bull, title="Bullish C2 Closure", message="Bullish C2 Fractal Closure {{ticker}}")
+alertcondition(c2Bear, title="Bearish C2 Closure", message="Bearish C2 Fractal Closure {{ticker}}")
+alertcondition(isPSP, title="PSP Candle (15m)", message="PSP Candle 15m {{ticker}}")
