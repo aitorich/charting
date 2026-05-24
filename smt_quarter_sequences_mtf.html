@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SMT Quarter Sequences (MTF) v2 - NQ/YM</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', sans-serif; background: #0a0a0f; color: #e0e0e0; overflow-x: hidden; }
+    .header { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; background: #111118; border-bottom: 1px solid #2a2a3a; }
+    .header h1 { font-size: 16px; color: #fff; }
+    .header .sub { font-size: 11px; color: #888; margin-left: 10px; }
+    .bias-badge { padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+    .bias-badge.bull { background: rgba(0,230,118,0.15); color: #00e676; border: 1px solid #00e676; }
+    .bias-badge.bear { background: rgba(255,23,68,0.15); color: #ff1744; border: 1px solid #ff1744; }
+    .bias-badge.neutral { background: rgba(136,136,136,0.15); color: #888; border: 1px solid #555; }
+    .main { display: flex; height: calc(100vh - 52px); }
+    .chart-area { flex: 1; display: flex; flex-direction: column; padding: 10px; gap: 8px; }
+    .tf-row { display: flex; gap: 8px; flex: 1; }
+    .tf-box { flex: 1; background: #111118; border: 1px solid #2a2a3a; border-radius: 6px; padding: 12px; position: relative; overflow: hidden; }
+    .tf-box.active { border-color: rgba(255,204,0,0.4); background: rgba(255,204,0,0.03); }
+    .tf-label { position: absolute; top: 8px; left: 10px; font-size: 10px; font-weight: bold; color: #555; text-transform: uppercase; letter-spacing: 1px; }
+    .tf-label.armed { color: #ffcc00; }
+    .c2-marker { display: flex; align-items: center; justify-content: center; height: 100%; font-size: 48px; opacity: 0.15; }
+    .c2-marker.bull { color: #00e676; opacity: 0.8; }
+    .c2-marker.bear { color: #ff1744; opacity: 0.8; }
+    .smt-dot { position: absolute; bottom: 10px; right: 10px; width: 12px; height: 12px; border-radius: 50%; }
+    .smt-dot.bull { background: #00e676; box-shadow: 0 0 8px #00e676; }
+    .smt-dot.bear { background: #ff1744; box-shadow: 0 0 8px #ff1744; }
+    .side { width: 280px; background: #111118; border-left: 1px solid #2a2a3a; padding: 15px; overflow-y: auto; }
+    .section { margin-bottom: 20px; }
+    .section h3 { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; padding-bottom: 5px; border-bottom: 1px solid #222; }
+    .flow-step { display: flex; align-items: center; gap: 8px; padding: 8px; margin-bottom: 4px; border-radius: 4px; font-size: 11px; }
+    .flow-step .icon { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 4px; font-size: 14px; }
+    .flow-step.daily .icon { background: rgba(255,204,0,0.2); color: #ffcc00; }
+    .flow-step.h4 .icon { background: rgba(0,188,212,0.2); color: #00bcd4; }
+    .flow-step.h1 .icon { background: rgba(0,230,118,0.2); color: #00e676; }
+    .flow-step.m15 .icon { background: rgba(224,64,251,0.2); color: #e040fb; }
+    .flow-step .text { flex: 1; }
+    .flow-step .text strong { display: block; color: #ccc; font-size: 12px; }
+    .flow-step .text span { color: #666; }
+    .event-log { max-height: 200px; overflow-y: auto; }
+    .event { padding: 6px 8px; margin-bottom: 3px; border-radius: 3px; font-size: 10px; border-left: 3px solid; }
+    .event.bull { background: rgba(0,230,118,0.05); border-left-color: #00e676; color: #aaa; }
+    .event.bear { background: rgba(255,23,68,0.05); border-left-color: #ff1744; color: #aaa; }
+    .event strong { color: #ddd; }
+    .visual-legend { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 11px; align-items: center; }
+    .legend-icon { font-size: 16px; text-align: center; }
+    .legend-text { color: #888; }
+    .stats-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #1a1a2a; font-size: 12px; }
+    .stats-row .label { color: #888; }
+    .stats-row .val { font-weight: bold; }
+    .stats-row .val.bull { color: #00e676; }
+    .stats-row .val.bear { color: #ff1744; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div style="display:flex;align-items:center;">
+    <h1>SMT Quarter Sequences (MTF) v2</h1>
+    <span class="sub">Daily Bias → 4HR C2 → 1HR Quarters → 15m SMT</span>
+  </div>
+  <div id="biasDisplay" class="bias-badge neutral">BIAS: —</div>
+</div>
+
+<div class="main">
+  <div class="chart-area">
+    <!-- Top row: Daily + 4HR -->
+    <div class="tf-row">
+      <div class="tf-box" id="boxDaily">
+        <div class="tf-label">DAILY BIAS</div>
+        <div class="c2-marker" id="dailyMarker">—</div>
+      </div>
+      <div class="tf-box" id="box4h">
+        <div class="tf-label" id="label4h">4HR C1/C2/C3</div>
+        <div class="c2-marker" id="marker4h">—</div>
+      </div>
+    </div>
+    <!-- Bottom row: 1HR + 15m quarters -->
+    <div class="tf-row">
+      <div class="tf-box" id="box1h">
+        <div class="tf-label" id="label1h">1HR C1/C2/C3</div>
+        <div class="c2-marker" id="marker1h">—</div>
+      </div>
+      <div class="tf-box" id="box15m">
+        <div class="tf-label" id="label15m">15M QUARTERS</div>
+        <div style="display:flex;align-items:center;justify-content:center;height:100%;gap:8px;" id="quarters15m">
+          <div style="width:40px;height:60px;border:1px solid #333;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#555;">Q1</div>
+          <div style="width:40px;height:60px;border:1px solid #333;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#555;">Q2</div>
+          <div style="width:40px;height:60px;border:1px solid #333;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#555;">Q3</div>
+          <div style="width:40px;height:60px;border:1px solid #333;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#555;">Q4</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="side">
+    <div class="section">
+      <h3>Signal Flow</h3>
+      <div class="flow-step daily">
+        <div class="icon">D</div>
+        <div class="text"><strong>Daily Bias</strong><span>C2 closure on PDH/PDL</span></div>
+      </div>
+      <div class="flow-step h4">
+        <div class="icon">4H</div>
+        <div class="text"><strong>4HR C2 Closure</strong><span>Sweep + close back → arm C3</span></div>
+      </div>
+      <div class="flow-step h1">
+        <div class="icon">1H</div>
+        <div class="text"><strong>1HR C2 Closure</strong><span>Same logic, lower TF</span></div>
+      </div>
+      <div class="flow-step m15">
+        <div class="icon">15</div>
+        <div class="text"><strong>15m Quarter SMT</strong><span>NQ vs YM divergence</span></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>Visual Key</h3>
+      <div class="visual-legend">
+        <div class="legend-icon" style="color:#00bcd4;">▲</div>
+        <div class="legend-text">4HR Bullish C2 (large triangle)</div>
+        <div class="legend-icon" style="color:#ff5722;">▼</div>
+        <div class="legend-text">4HR Bearish C2 (large triangle)</div>
+        <div class="legend-icon" style="color:#00e676;">◆</div>
+        <div class="legend-text">1HR Bullish C2 (small diamond)</div>
+        <div class="legend-icon" style="color:#ff1744;">◆</div>
+        <div class="legend-text">1HR Bearish C2 (small diamond)</div>
+        <div class="legend-icon" style="color:#00e676;">●</div>
+        <div class="legend-text">Bull SMT (4HR = large, 1HR = small)</div>
+        <div class="legend-icon" style="color:#ff1744;">●</div>
+        <div class="legend-text">Bear SMT (4HR = large, 1HR = small)</div>
+        <div class="legend-icon" style="color:#e040fb;">|</div>
+        <div class="legend-text">PSP candle (bar color)</div>
+        <div class="legend-icon" style="color:#ffcc00;opacity:0.5;">█</div>
+        <div class="legend-text">C3 zone (background glow)</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>Design Principles</h3>
+      <div style="font-size:11px;color:#666;line-height:1.7;">
+        <strong style="color:#ffcc00;">Silent outside C3.</strong> Chart is blank when no setup is active.<br><br>
+        <strong style="color:#ffcc00;">Alive inside C3.</strong> Zone lights up, signals appear, PSP fires.<br><br>
+        <strong style="color:#ffcc00;">Bias filters everything.</strong> Only signals aligned with daily direction show.<br><br>
+        <strong style="color:#ffcc00;">Visual hierarchy.</strong> Big = macro (4HR). Small = micro (1HR). Dots = execution (SMT).
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Simulate the indicator state
+function simulate() {
+  const biases = ['bull', 'bear', 'neutral'];
+  const bias = biases[Math.floor(Math.random() * 2)]; // mostly bull/bear
+  
+  // Update bias badge
+  const badge = document.getElementById('biasDisplay');
+  badge.className = 'bias-badge ' + bias;
+  badge.textContent = 'BIAS: ' + (bias === 'bull' ? 'BULL' : bias === 'bear' ? 'BEAR' : '—');
+  
+  // Daily marker
+  const dm = document.getElementById('dailyMarker');
+  dm.className = 'c2-marker ' + bias;
+  dm.textContent = bias === 'bull' ? '▲' : bias === 'bear' ? '▼' : '—';
+  
+  // 4HR state
+  const states4h = ['C1', 'C2↑', 'C2↓', 'C3'];
+  const s4h = states4h[Math.floor(Math.random() * states4h.length)];
+  const m4h = document.getElementById('marker4h');
+  const l4h = document.getElementById('label4h');
+  const b4h = document.getElementById('box4h');
+  
+  if (s4h === 'C2↑') {
+    m4h.className = 'c2-marker bull'; m4h.textContent = '▲';
+    l4h.className = 'tf-label'; l4h.textContent = '4HR — C2 CONFIRMED';
+    b4h.className = 'tf-box';
+  } else if (s4h === 'C2↓') {
+    m4h.className = 'c2-marker bear'; m4h.textContent = '▼';
+    l4h.className = 'tf-label'; l4h.textContent = '4HR — C2 CONFIRMED';
+    b4h.className = 'tf-box';
+  } else if (s4h === 'C3') {
+    m4h.className = 'c2-marker'; m4h.textContent = 'C3'; m4h.style.color = '#ffcc00';
+    l4h.className = 'tf-label armed'; l4h.textContent = '4HR — C3 ACTIVE';
+    b4h.className = 'tf-box active';
+  } else {
+    m4h.className = 'c2-marker'; m4h.textContent = '—'; m4h.style.color = '';
+    l4h.className = 'tf-label'; l4h.textContent = '4HR — WAITING C1';
+    b4h.className = 'tf-box';
+  }
+  
+  // 1HR state
+  const states1h = ['C1', 'C2↑', 'C2↓', 'C3'];
+  const s1h = states1h[Math.floor(Math.random() * states1h.length)];
+  const m1h = document.getElementById('marker1h');
+  const l1h = document.getElementById('label1h');
+  const b1h = document.getElementById('box1h');
+  
+  if (s1h === 'C2↑') {
+    m1h.className = 'c2-marker bull'; m1h.textContent = '◆';
+    l1h.className = 'tf-label'; l1h.textContent = '1HR — C2 CONFIRMED';
+    b1h.className = 'tf-box';
+  } else if (s1h === 'C2↓') {
+    m1h.className = 'c2-marker bear'; m1h.textContent = '◆';
+    l1h.className = 'tf-label'; l1h.textContent = '1HR — C2 CONFIRMED';
+    b1h.className = 'tf-box';
+  } else if (s1h === 'C3') {
+    m1h.className = 'c2-marker'; m1h.textContent = 'C3'; m1h.style.color = '#ffcc00';
+    l1h.className = 'tf-label armed'; l1h.textContent = '1HR — C3 ACTIVE';
+    b1h.className = 'tf-box active';
+  } else {
+    m1h.className = 'c2-marker'; m1h.textContent = '—'; m1h.style.color = '';
+    l1h.className = 'tf-label'; l1h.textContent = '1HR — WAITING C1';
+    b1h.className = 'tf-box';
+  }
+  
+  // 15m quarters
+  const q = document.getElementById('quarters15m');
+  const activeQ = Math.floor(Math.random() * 4);
+  const isC3Active = s1h === 'C3' || s4h === 'C3';
+  const b15 = document.getElementById('box15m');
+  b15.className = isC3Active ? 'tf-box active' : 'tf-box';
+  
+  q.innerHTML = ['Q1','Q2','Q3','Q4'].map((label, i) => {
+    let style = 'width:40px;height:60px;border:1px solid #333;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:10px;';
+    if (isC3Active && i <= activeQ) {
+      const hasSMT = Math.random() > 0.6;
+      if (hasSMT) {
+        const isBull = bias === 'bull';
+        style += `color:${isBull ? '#00e676' : '#ff1744'};border-color:${isBull ? '#00e676' : '#ff1744'};background:${isBull ? 'rgba(0,230,118,0.1)' : 'rgba(255,23,68,0.1)'};`;
+        return `<div style="${style}">●</div>`;
+      }
+      style += 'color:#ffcc00;border-color:rgba(255,204,0,0.3);';
+    } else {
+      style += 'color:#333;';
+    }
+    return `<div style="${style}">${label}</div>`;
+  }).join('');
+}
+
+// Run simulation
+simulate();
+setInterval(simulate, 4000);
+</script>
+
+</body>
+</html>
