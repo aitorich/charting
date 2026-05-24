@@ -74,10 +74,69 @@ bool new4hBlock = (sinceOpen % 4 == 0) and newHour
 bool inSession = hr >= 0 and hr < 16
 bool dailyReset = (hr == 0 and prevHr != 0) or session.isfirstbar
 
+// ─── DAILY BIAS STYLE ─────────────────────────────────────────────────────────
+bool showBias       = input.bool(true, "Show Daily Bias", group="Daily Bias")
+bool filterByBias   = input.bool(true, "Filter Signals by Bias", group="Daily Bias")
+color biasBullClr   = input.color(color.new(#00e676, 0), "Bias Bull Color", group="Daily Bias")
+color biasBearClr   = input.color(color.new(#ff1744, 0), "Bias Bear Color", group="Daily Bias")
+
 // ─── DISPLAY FILTER ───────────────────────────────────────────────────────────
 int barsPerDay = is15m ? 96 : is1H ? 24 : is4H ? 6 : 96
 int displayBars = displayDays * barsPerDay
 bool inDisplay = bar_index >= (last_bar_index - displayBars)
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── DAILY BIAS (C2 fractal closure on daily TF) ─────────────────────────────
+// Same logic: yesterday sweeps prior day high/low + closes back = reversal bias
+// Yesterday closes through PDH/PDL = continuation bias
+// Bias persists until opposing event
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Daily data: prior day high/low (PDH/PDL) and yesterday's OHLC
+[dH, dL, dC]       = request.security(syminfo.tickerid, "D", [high, low, close])
+[dPrevH, dPrevL]   = request.security(syminfo.tickerid, "D", [high[1], low[1]])
+[d2PrevH, d2PrevL] = request.security(syminfo.tickerid, "D", [high[2], low[2]])
+
+// Detect new day (daily candle boundary)
+bool newDay = ta.change(time("D")) != 0
+
+// Daily bias state: 1=bullish, -1=bearish, 0=neutral
+var int dailyBias = 0
+
+if newDay
+    // Yesterday's candle = dPrevH/dPrevL/dPrevC (which is dC[1] on lower TF at day open)
+    // Prior day range = d2PrevH / d2PrevL
+    float ydayH = dPrevH    // yesterday's high
+    float ydayL = dPrevL    // yesterday's low
+    float ydayC = dC[1]     // yesterday's close (previous daily close)
+    float pdH   = d2PrevH   // prior day high (day before yesterday)
+    float pdL   = d2PrevL   // prior day low (day before yesterday)
+
+    if not na(pdH) and not na(pdL) and not na(ydayH) and not na(ydayC)
+        // ─── BULLISH SCENARIOS ────────────────────────────────────────
+        // Continuation: yesterday closed above PDH
+        if ydayC > pdH
+            dailyBias := 1
+        // Reversal: yesterday swept PDL (wick below) but closed back above PDL
+        else if ydayL < pdL and ydayC > pdL
+            dailyBias := 1
+
+        // ─── BEARISH SCENARIOS ────────────────────────────────────────
+        // Continuation: yesterday closed below PDL
+        else if ydayC < pdL
+            dailyBias := -1
+        // Reversal: yesterday swept PDH (wick above) but closed back below PDH
+        else if ydayH > pdH and ydayC < pdH
+            dailyBias := -1
+
+        // If none of the above → bias persists (no change)
+
+// Bias alignment check for filtering
+bool biasIsBull = dailyBias == 1
+bool biasIsBear = dailyBias == -1
+bool biasAlignsBull = not filterByBias or biasIsBull
+bool biasAlignsBear = not filterByBias or biasIsBear
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -115,11 +174,11 @@ if (is15m or is1H or is4H) and not inSession
     inC3_4h := false
 
 // ─── DRAW 4HR C2 (triangle marker + dashed level) ────────────────────────────
-if (is15m or is1H or is4H) and c2Bull4h and show4hC2 and inDisplay
+if (is15m or is1H or is4H) and c2Bull4h and show4hC2 and inDisplay and biasAlignsBull
     label.new(bar_index, low, "▲", style=label.style_none, textcolor=c2Bull4hClr, size=size.large, xloc=xloc.bar_index)
     line.new(c1B4h, c1L4h, bar_index, c1L4h, color=color.new(c2Bull4hClr, 50), width=1, style=line.style_dashed)
 
-if (is15m or is1H or is4H) and c2Bear4h and show4hC2 and inDisplay
+if (is15m or is1H or is4H) and c2Bear4h and show4hC2 and inDisplay and biasAlignsBear
     label.new(bar_index, high, "▼", style=label.style_none, textcolor=c2Bear4hClr, size=size.large, xloc=xloc.bar_index)
     line.new(c1B4h, c1H4h, bar_index, c1H4h, color=color.new(c2Bear4hClr, 50), width=1, style=line.style_dashed)
 
@@ -191,11 +250,11 @@ if (is1H or is15m) and inC3_4h and q4h >= 1 and newHour
 
 
 // Draw 4HR SMT (thick line + dot)
-if (is1H or is15m) and bear4h and not na(pH4) and inDisplay
+if (is1H or is15m) and bear4h and not na(pH4) and inDisplay and biasAlignsBear
     line.new(pH4, pHA4, bar_index, aH60, color=bearClr, width=smtWidth + 1, style=line.style_solid)
     label.new(bar_index, aH60, "●", style=label.style_none, textcolor=bearClr, size=size.normal, xloc=xloc.bar_index)
 
-if (is1H or is15m) and bull4h and not na(pL4) and inDisplay
+if (is1H or is15m) and bull4h and not na(pL4) and inDisplay and biasAlignsBull
     line.new(pL4, pLA4, bar_index, aL60, color=bullClr, width=smtWidth + 1, style=line.style_solid)
     label.new(bar_index, aL60, "●", style=label.style_none, textcolor=bullClr, size=size.normal, xloc=xloc.bar_index)
 
@@ -234,11 +293,11 @@ if (is15m or is1H) and not inSession
     inC3_1h := false
 
 // ─── DRAW 1HR C2 (diamond marker + dotted level) ─────────────────────────────
-if (is15m or is1H) and c2Bull1h and show1hC2 and inDisplay
+if (is15m or is1H) and c2Bull1h and show1hC2 and inDisplay and biasAlignsBull
     label.new(bar_index, low, "◆", style=label.style_none, textcolor=c2Bull1hClr, size=size.small, xloc=xloc.bar_index)
     line.new(c1B1h, c1L1h, bar_index, c1L1h, color=color.new(c2Bull1hClr, 60), width=1, style=line.style_dotted)
 
-if (is15m or is1H) and c2Bear1h and show1hC2 and inDisplay
+if (is15m or is1H) and c2Bear1h and show1hC2 and inDisplay and biasAlignsBear
     label.new(bar_index, high, "◆", style=label.style_none, textcolor=c2Bear1hClr, size=size.small, xloc=xloc.bar_index)
     line.new(c1B1h, c1H1h, bar_index, c1H1h, color=color.new(c2Bear1hClr, 60), width=1, style=line.style_dotted)
 
@@ -310,11 +369,11 @@ if is15m and inC3_1h and q1h >= 1
 
 
 // Draw 1HR SMT (thin line + small dot)
-if is15m and bear1h and not na(pH1) and inDisplay
+if is15m and bear1h and not na(pH1) and inDisplay and biasAlignsBear
     line.new(pH1, pHA1, bar_index, aH15, color=bearClr, width=smtWidth, style=line.style_solid)
     label.new(bar_index, aH15, "•", style=label.style_none, textcolor=bearClr, size=size.small, xloc=xloc.bar_index)
 
-if is15m and bull1h and not na(pL1) and inDisplay
+if is15m and bull1h and not na(pL1) and inDisplay and biasAlignsBull
     line.new(pL1, pLA1, bar_index, aL15, color=bullClr, width=smtWidth, style=line.style_solid)
     label.new(bar_index, aL15, "•", style=label.style_none, textcolor=bullClr, size=size.small, xloc=xloc.bar_index)
 
@@ -354,18 +413,27 @@ if bull1h and inDisplay
 if bear1h and inDisplay
     tBear1 += 1
 
-var table t = table.new(position.top_right, 3, 3, bgcolor=color.new(#000000, 80), border_width=0)
+var table t = table.new(position.top_right, 3, 4, bgcolor=color.new(#000000, 80), border_width=0)
 
 if showTable and barstate.islast
-    table.cell(t, 0, 0, "", text_size=size.tiny)
-    table.cell(t, 1, 0, "▲", text_color=bullClr, text_size=size.small)
-    table.cell(t, 2, 0, "▼", text_color=bearClr, text_size=size.small)
-    table.cell(t, 0, 1, "4H", text_color=#00bcd4, text_size=size.small)
-    table.cell(t, 1, 1, str.tostring(tBull4), text_color=#ffffff, text_size=size.small)
-    table.cell(t, 2, 1, str.tostring(tBear4), text_color=#ffffff, text_size=size.small)
-    table.cell(t, 0, 2, "1H", text_color=#ffcc00, text_size=size.small)
-    table.cell(t, 1, 2, str.tostring(tBull1), text_color=#ffffff, text_size=size.small)
-    table.cell(t, 2, 2, str.tostring(tBear1), text_color=#ffffff, text_size=size.small)
+    // Daily Bias row
+    string biasText = dailyBias == 1 ? "BULL" : dailyBias == -1 ? "BEAR" : "—"
+    color biasClr = dailyBias == 1 ? biasBullClr : dailyBias == -1 ? biasBearClr : #888888
+    table.cell(t, 0, 0, "BIAS", text_color=#aaaaaa, text_size=size.small)
+    table.cell(t, 1, 0, biasText, text_color=biasClr, text_size=size.small)
+    table.cell(t, 2, 0, "", text_size=size.tiny)
+    // Header
+    table.cell(t, 0, 1, "", text_size=size.tiny)
+    table.cell(t, 1, 1, "▲", text_color=bullClr, text_size=size.small)
+    table.cell(t, 2, 1, "▼", text_color=bearClr, text_size=size.small)
+    // 4HR row
+    table.cell(t, 0, 2, "4H", text_color=#00bcd4, text_size=size.small)
+    table.cell(t, 1, 2, str.tostring(tBull4), text_color=#ffffff, text_size=size.small)
+    table.cell(t, 2, 2, str.tostring(tBear4), text_color=#ffffff, text_size=size.small)
+    // 1HR row
+    table.cell(t, 0, 3, "1H", text_color=#ffcc00, text_size=size.small)
+    table.cell(t, 1, 3, str.tostring(tBull1), text_color=#ffffff, text_size=size.small)
+    table.cell(t, 2, 3, str.tostring(tBear1), text_color=#ffffff, text_size=size.small)
 
 // ─── ALERTS ──────────────────────────────────────────────────────────────────
 alertcondition(bull4h, title="Bull SMT (4H)", message="Bull SMT 4HR C3 {{ticker}}")
