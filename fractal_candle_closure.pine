@@ -1,15 +1,21 @@
 // This Pine Script™ source code is subject to the terms of the Mozilla Public License 2.0
 // © Fractal Candle Closure
-// C1/C2 sweep reversal + C3 confirmation pattern
+// C1/C2 sweep reversal + 50% midpoint box validation
 // C2 pattern: C2 sweeps C1 low/high but closes back above/below = instant reversal
-// C3 pattern: C2 sweeps C1 low/high and closes through (fails) → C3 engulfs C2 open = reversal
-// Lines: Horizontal at swept level / C2 open level
+// 50% box: from C3 open to C2 low/high (full range). If C3 trades beyond 50% → box removed.
+// + FVG (Fair Value Gap) boxes
+// + Swing High/Low levels with mitigation
 
 //@version=6
-indicator("Fractal Candle Closure", overlay=true, max_lines_count=500, max_labels_count=200)
+indicator("Fractal Candle Closure", overlay=true, max_lines_count=500, max_labels_count=200, max_boxes_count=500)
+
+// ─── TIMEFRAME CHECK ──────────────────────────────────────────────────────────
+if timeframe.in_seconds() < 900
+    runtime.error("15m minimum timeframe required")
 
 // ─── DISPLAY ──────────────────────────────────────────────────────────────────
-int displayDays = input.int(3, "Show Sweep Within Last N Days", minval=1, maxval=20, group="Display")
+int displayDays = input.int(3, "Show Last N Days", minval=1, maxval=20, group="Display")
+int maxC2Count  = input.int(10, "Max C2 Sweeps to Show", minval=1, maxval=50, group="Display")
 
 // ─── C2 SWEEP STYLE ──────────────────────────────────────────────────────────
 bool showC2       = input.bool(true, "Show C2 Sweep", group="C2 Sweep")
@@ -19,56 +25,260 @@ int c2LineWidth   = input.int(1, "C2 Line Width", minval=1, maxval=5, group="C2 
 string c2LineStyleStr = input.string("Solid", "C2 Line Style", options=["Solid", "Dashed", "Dotted"], group="C2 Sweep")
 int c2ExtraBars   = input.int(1, "C2 Extra Bars", minval=0, maxval=5, group="C2 Sweep")
 
-// ─── C3 SWEEP STYLE ──────────────────────────────────────────────────────────
-bool showC3       = input.bool(true, "Show C3 Closure", group="C3 Closure")
-color c3BullColor = input.color(color.new(#2196f3, 0), "C3 Bullish Color", group="C3 Closure")
-color c3BearColor = input.color(color.new(#2196f3, 0), "C3 Bearish Color", group="C3 Closure")
-int c3LineWidth   = input.int(1, "C3 Line Width", minval=1, maxval=5, group="C3 Closure")
-string c3LineStyleStr = input.string("Dashed", "C3 Line Style", options=["Solid", "Dashed", "Dotted"], group="C3 Closure")
-int c3ExtraBars   = input.int(1, "C3 Extra Bars", minval=0, maxval=5, group="C3 Closure")
+// ─── 50% BOX STYLE ───────────────────────────────────────────────────────────
+bool show50          = input.bool(true, "Show 50% Box", group="50% Box")
+string midTF         = input.string("60", "Midpoint Timeframe", options=["15", "30", "60", "240", "D", "W"], group="50% Box")
+color mid50BullColor = input.color(color.new(#2196f3, 80), "50% Bull Box Color", group="50% Box")
+color mid50BearColor = input.color(color.new(#2196f3, 80), "50% Bear Box Color", group="50% Box")
+color mid50BullBorder = input.color(color.new(#2196f3, 50), "50% Bull Border", group="50% Box")
+color mid50BearBorder = input.color(color.new(#2196f3, 50), "50% Bear Border", group="50% Box")
+int mid50BorderWidth  = input.int(1, "50% Border Width", minval=0, maxval=3, group="50% Box")
+int mid50ExtraBars    = input.int(2, "50% Box Extend Right", minval=0, maxval=10, group="50% Box")
+
+// ─── BULLISH FVG STYLE ────────────────────────────────────────────────────────
+bool showBullFVG      = input.bool(true, "Show Bullish FVG", group="Bullish FVG")
+color bullFVGColor    = input.color(color.new(#00e676, 80), "Bullish FVG Color", group="Bullish FVG")
+color bullBorderColor = input.color(color.new(#00e676, 50), "Bullish Border Color", group="Bullish FVG")
+int bullBorderWidth   = input.int(1, "Bullish Border Width", minval=0, maxval=3, group="Bullish FVG")
+
+// ─── BEARISH FVG STYLE ────────────────────────────────────────────────────────
+bool showBearFVG      = input.bool(true, "Show Bearish FVG", group="Bearish FVG")
+color bearFVGColor    = input.color(color.new(#ff1744, 80), "Bearish FVG Color", group="Bearish FVG")
+color bearBorderColor = input.color(color.new(#ff1744, 50), "Bearish Border Color", group="Bearish FVG")
+int bearBorderWidth   = input.int(1, "Bearish Border Width", minval=0, maxval=3, group="Bearish FVG")
+
+// ─── FVG BOX SETTINGS ─────────────────────────────────────────────────────────
+int boxExtend = input.int(5, "FVG Box Extend (bars right)", minval=1, maxval=20, group="FVG Box")
+
+// ─── SWING SETTINGS ───────────────────────────────────────────────────────────
+int swingStrength = input.int(2, "Swing Strength (bars each side)", minval=1, maxval=10, group="Swing Detection")
+
+// ─── SWING HIGH STYLE ─────────────────────────────────────────────────────────
+bool showSwingH    = input.bool(true, "Show Swing High", group="Swing High")
+color swingHColor  = input.color(color.new(#ff1744, 0), "Swing High Color", group="Swing High")
+int swingHWidth    = input.int(1, "Swing High Width", minval=1, maxval=5, group="Swing High")
+string swingHStyle = input.string("Solid", "Swing High Style", options=["Solid", "Dashed", "Dotted"], group="Swing High")
+int swingHExtendL  = input.int(0, "Swing High Extend Left", minval=0, maxval=20, group="Swing High")
+int swingHExtendR  = input.int(10, "Swing High Extend Right", minval=1, maxval=50, group="Swing High")
+
+// ─── SWING LOW STYLE ──────────────────────────────────────────────────────────
+bool showSwingL    = input.bool(true, "Show Swing Low", group="Swing Low")
+color swingLColor  = input.color(color.new(#00e676, 0), "Swing Low Color", group="Swing Low")
+int swingLWidth    = input.int(1, "Swing Low Width", minval=1, maxval=5, group="Swing Low")
+string swingLStyle = input.string("Solid", "Swing Low Style", options=["Solid", "Dashed", "Dotted"], group="Swing Low")
+int swingLExtendL  = input.int(0, "Swing Low Extend Left", minval=0, maxval=20, group="Swing Low")
+int swingLExtendR  = input.int(10, "Swing Low Extend Right", minval=1, maxval=50, group="Swing Low")
+
+// ─── MITIGATION ───────────────────────────────────────────────────────────────
+bool hideMitigated = input.bool(true, "Hide Mitigated Levels", group="Mitigation")
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 lineStyle(string s) =>
     s == "Dashed" ? line.style_dashed : s == "Dotted" ? line.style_dotted : line.style_solid
 
 // ─── N DAYS DISPLAY FILTER ────────────────────────────────────────────────────
-int displayBars = displayDays * 24
+int barsPerDay = timeframe.in_seconds() > 0 ? math.round(86400 / timeframe.in_seconds()) : 24
+int displayBars = displayDays * barsPerDay
 bool inDisplay = bar_index >= (last_bar_index - displayBars)
 
+// ─── REQUEST MIDPOINT TIMEFRAME DATA ──────────────────────────────────────────
+[midH, midL, midO] = request.security(syminfo.tickerid, midTF, [high[1], low[1], open])
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── FVG DETECTION ────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+
+float bullFVGTop = low
+float bullFVGBot = high[2]
+bool bullFVG = bullFVGTop > bullFVGBot
+
+float bearFVGTop = low[2]
+float bearFVGBot = high
+bool bearFVG = bearFVGBot < bearFVGTop
+
+var float[] bullFVGTops = array.new_float(0)
+var float[] bullFVGBots = array.new_float(0)
+var array<box> bullFVGBoxes = array.new<box>(0)
+var bool[] bullFVGMitigated = array.new_bool(0)
+
+var float[] bearFVGTops = array.new_float(0)
+var float[] bearFVGBots = array.new_float(0)
+var array<box> bearFVGBoxes = array.new<box>(0)
+var bool[] bearFVGMitigated = array.new_bool(0)
+
+if bullFVG
+    array.push(bullFVGTops, bullFVGTop)
+    array.push(bullFVGBots, bullFVGBot)
+    array.push(bullFVGMitigated, false)
+    if inDisplay and showBullFVG
+        array.push(bullFVGBoxes, box.new(bar_index - 1, bullFVGTop, bar_index + boxExtend, bullFVGBot, bgcolor=bullFVGColor, border_color=bullBorderColor, border_width=bullBorderWidth))
+    else
+        array.push(bullFVGBoxes, na)
+    if array.size(bullFVGTops) > 30
+        array.shift(bullFVGTops)
+        array.shift(bullFVGBots)
+        array.shift(bullFVGMitigated)
+        box old = array.shift(bullFVGBoxes)
+        if not na(old)
+            box.delete(old)
+
+if bearFVG
+    array.push(bearFVGTops, bearFVGTop)
+    array.push(bearFVGBots, bearFVGBot)
+    array.push(bearFVGMitigated, false)
+    if inDisplay and showBearFVG
+        array.push(bearFVGBoxes, box.new(bar_index - 1, bearFVGTop, bar_index + boxExtend, bearFVGBot, bgcolor=bearFVGColor, border_color=bearBorderColor, border_width=bearBorderWidth))
+    else
+        array.push(bearFVGBoxes, na)
+    if array.size(bearFVGTops) > 30
+        array.shift(bearFVGTops)
+        array.shift(bearFVGBots)
+        array.shift(bearFVGMitigated)
+        box old = array.shift(bearFVGBoxes)
+        if not na(old)
+            box.delete(old)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── SWING DETECTION ──────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+
+float swH = ta.pivothigh(high, swingStrength, swingStrength)
+float swL = ta.pivotlow(low, swingStrength, swingStrength)
+
+var float[] swingHighs = array.new_float(0)
+var array<line> swingHLines = array.new<line>(0)
+var bool[] swingHMitigated = array.new_bool(0)
+
+var float[] swingLows  = array.new_float(0)
+var array<line> swingLLines = array.new<line>(0)
+var bool[] swingLMitigated = array.new_bool(0)
+
+if not na(swH)
+    array.push(swingHighs, swH)
+    array.push(swingHMitigated, false)
+    if inDisplay and showSwingH
+        array.push(swingHLines, line.new(bar_index - swingStrength - swingHExtendL, swH, bar_index - swingStrength + swingHExtendR, swH, color=swingHColor, width=swingHWidth, style=lineStyle(swingHStyle)))
+    else
+        array.push(swingHLines, na)
+    if array.size(swingHighs) > 30
+        array.shift(swingHighs)
+        array.shift(swingHMitigated)
+        line old = array.shift(swingHLines)
+        if not na(old)
+            line.delete(old)
+
+if not na(swL)
+    array.push(swingLows, swL)
+    array.push(swingLMitigated, false)
+    if inDisplay and showSwingL
+        array.push(swingLLines, line.new(bar_index - swingStrength - swingLExtendL, swL, bar_index - swingStrength + swingLExtendR, swL, color=swingLColor, width=swingLWidth, style=lineStyle(swingLStyle)))
+    else
+        array.push(swingLLines, na)
+    if array.size(swingLows) > 30
+        array.shift(swingLows)
+        array.shift(swingLMitigated)
+        line old = array.shift(swingLLines)
+        if not na(old)
+            line.delete(old)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── MITIGATION: hide levels that price has traded through ────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+
+if hideMitigated
+    if array.size(swingHighs) > 0
+        for i = array.size(swingHighs) - 1 to 0
+            if not array.get(swingHMitigated, i)
+                if close > array.get(swingHighs, i)
+                    array.set(swingHMitigated, i, true)
+                    line ln = array.get(swingHLines, i)
+                    if not na(ln)
+                        line.delete(ln)
+
+    if array.size(swingLows) > 0
+        for i = array.size(swingLows) - 1 to 0
+            if not array.get(swingLMitigated, i)
+                if close < array.get(swingLows, i)
+                    array.set(swingLMitigated, i, true)
+                    line ln = array.get(swingLLines, i)
+                    if not na(ln)
+                        line.delete(ln)
+
+    if array.size(bullFVGBots) > 0
+        for i = array.size(bullFVGBots) - 1 to 0
+            if not array.get(bullFVGMitigated, i)
+                if close < array.get(bullFVGBots, i)
+                    array.set(bullFVGMitigated, i, true)
+                    box bx = array.get(bullFVGBoxes, i)
+                    if not na(bx)
+                        box.delete(bx)
+
+    if array.size(bearFVGTops) > 0
+        for i = array.size(bearFVGTops) - 1 to 0
+            if not array.get(bearFVGMitigated, i)
+                if close > array.get(bearFVGTops, i)
+                    array.set(bearFVGMitigated, i, true)
+                    box bx = array.get(bearFVGBoxes, i)
+                    if not na(bx)
+                        box.delete(bx)
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // ─── C2 PATTERN (instant reversal) ───────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
 // Bullish C2: sweeps C1 low, closes above C1 low
 bool c2Bull = (low < low[1]) and (close > low[1])
 // Bearish C2: sweeps C1 high, closes below C1 high
 bool c2Bear = (high > high[1]) and (close < high[1])
 
-// ─── C3 PATTERN (delayed reversal) ───────────────────────────────────────────
-// Bullish C3: C2 swept C1 low AND closed below C1 low (failed)
-//             Now C3 (current bar) closes above C2's open
-bool c2FailedBull = (low[1] < low[2]) and (close[1] < low[2])  // C2 swept C1 low but closed below
-bool c3Bull = c2FailedBull and (close > open[1])                 // C3 closes above C2 open
+// ─── C2 & 50% BOX ARRAYS (count limited) ─────────────────────────────────────
+var array<line> c2Lines = array.new<line>(0)
+var array<box> mid50Boxes = array.new<box>(0)
 
-// Bearish C3: C2 swept C1 high AND closed above C1 high (failed)
-//             Now C3 (current bar) closes below C2's open
-bool c2FailedBear = (high[1] > high[2]) and (close[1] > high[2])  // C2 swept C1 high but closed above
-bool c3Bear = c2FailedBear and (close < open[1])                    // C3 closes below C2 open
+// ─── 50% MIDPOINT CALCULATION ─────────────────────────────────────────────────
+// Bullish C2: 50% from C2 low to C3 open (on selected TF)
+float bull50 = midL + (midO - midL) / 2
+// Bearish C2: 50% from C2 high to C3 open (on selected TF)
+float bear50 = midH - (midH - midO) / 2
 
-// ─── DRAW C2 SWEEPS ──────────────────────────────────────────────────────────
+bool prevC2Bull = c2Bull[1]
+bool prevC2Bear = c2Bear[1]
+
+// ─── DRAW C2 SWEEPS (limited to N count) ──────────────────────────────────────
 if showC2 and c2Bull and inDisplay
-    line.new(bar_index - 1, low[1], bar_index + c2ExtraBars, low[1], color=c2BullColor, width=c2LineWidth, style=lineStyle(c2LineStyleStr))
+    if array.size(c2Lines) >= maxC2Count
+        line old = array.shift(c2Lines)
+        if not na(old)
+            line.delete(old)
+    array.push(c2Lines, line.new(bar_index - 1, low[1], bar_index + c2ExtraBars, low[1], color=c2BullColor, width=c2LineWidth, style=lineStyle(c2LineStyleStr)))
 
 if showC2 and c2Bear and inDisplay
-    line.new(bar_index - 1, high[1], bar_index + c2ExtraBars, high[1], color=c2BearColor, width=c2LineWidth, style=lineStyle(c2LineStyleStr))
+    if array.size(c2Lines) >= maxC2Count
+        line old = array.shift(c2Lines)
+        if not na(old)
+            line.delete(old)
+    array.push(c2Lines, line.new(bar_index - 1, high[1], bar_index + c2ExtraBars, high[1], color=c2BearColor, width=c2LineWidth, style=lineStyle(c2LineStyleStr)))
 
-// ─── DRAW C3 CLOSURE ─────────────────────────────────────────────────────────
-// Line at C2's open level (the level C3 engulfs)
-if showC3 and c3Bull and inDisplay
-    line.new(bar_index - 1, open[1], bar_index + c3ExtraBars, open[1], color=c3BullColor, width=c3LineWidth, style=lineStyle(c3LineStyleStr))
+// ─── DRAW 50% BOX (C3 open to 50% level) ─────────────────────────────────────
+// Bullish: box from C3 open (top) down to 50% toward C2 low (bottom)
+if show50 and prevC2Bull and inDisplay
+    if array.size(mid50Boxes) >= maxC2Count
+        box old = array.shift(mid50Boxes)
+        if not na(old)
+            box.delete(old)
+    array.push(mid50Boxes, box.new(bar_index, midO, bar_index + mid50ExtraBars, bull50, bgcolor=mid50BullColor, border_color=mid50BullBorder, border_width=mid50BorderWidth))
 
-if showC3 and c3Bear and inDisplay
-    line.new(bar_index - 1, open[1], bar_index + c3ExtraBars, open[1], color=c3BearColor, width=c3LineWidth, style=lineStyle(c3LineStyleStr))
+// Bearish: box from 50% toward C2 high (top) down to C3 open (bottom)
+if show50 and prevC2Bear and inDisplay
+    if array.size(mid50Boxes) >= maxC2Count
+        box old = array.shift(mid50Boxes)
+        if not na(old)
+            box.delete(old)
+    array.push(mid50Boxes, box.new(bar_index, bear50, bar_index + mid50ExtraBars, midO, bgcolor=mid50BearColor, border_color=mid50BearBorder, border_width=mid50BorderWidth))
 
 // ─── ALERTS ──────────────────────────────────────────────────────────────────
 alertcondition(c2Bull, title="C2 Bull Sweep", message="C2 Bullish Sweep {{ticker}}")
 alertcondition(c2Bear, title="C2 Bear Sweep", message="C2 Bearish Sweep {{ticker}}")
-alertcondition(c3Bull, title="C3 Bull Closure", message="C3 Bullish Reversal {{ticker}}")
-alertcondition(c3Bear, title="C3 Bear Closure", message="C3 Bearish Reversal {{ticker}}")
+alertcondition(bullFVG, title="Bullish FVG", message="Bullish FVG {{ticker}}")
+alertcondition(bearFVG, title="Bearish FVG", message="Bearish FVG {{ticker}}")
+alertcondition(not na(swH), title="Swing High", message="Swing High {{ticker}}")
+alertcondition(not na(swL), title="Swing Low", message="Swing Low {{ticker}}")
