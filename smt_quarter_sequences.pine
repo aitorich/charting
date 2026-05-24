@@ -1,43 +1,104 @@
 // This Pine Script™ source code is subject to the terms of the Mozilla Public License 2.0
 // © SMT Quarter Sequences (4HR) - NQ/YM
-// Clean professional design. SMT lines + minimal inline text.
-// Background color bands show quarters. No floating labels.
+// Wick-to-wick SMT lines across quarters within 2AM/6AM/10AM blocks
+// + Cross-block SMT: Q1 vs Q4 of previous block only
+// + Fractal Candle Closure (multi-timeframe)
+// + PSP Candle + Daily Open Line
 
 //@version=6
 indicator("SMT Quarter Sequences (4HR)", overlay=true, max_lines_count=500, max_labels_count=200)
 
-// ─── INPUTS ───────────────────────────────────────────────────────────────────
-string symA_input = input.symbol("NQ1!", "Symbol A", group="Symbols")
-string symB_input = input.symbol("YM1!", "Symbol B", group="Symbols")
+// ─── SYMBOLS ──────────────────────────────────────────────────────────────────
+string symA = input.symbol("NQ1!", "Symbol A", group="Symbols")
+string symB = input.symbol("YM1!", "Symbol B", group="Symbols")
 
-color bullColor   = input.color(color.new(#00e676, 0), "Bullish SMT", group="Style")
-color bearColor   = input.color(color.new(#ff1744, 0), "Bearish SMT", group="Style")
-int lineWidth     = input.int(2, "Line Width", minval=1, maxval=5, group="Style")
-bool showTable    = input.bool(true, "Show Table", group="Style")
+// ─── DISPLAY ──────────────────────────────────────────────────────────────────
+int displayDays = input.int(1, "Show Last N Days", minval=1, maxval=10, group="Display")
 
-// ─── TIMEFRAME CHECK ──────────────────────────────────────────────────────────
-if timeframe.period != "60"
-    runtime.error("1H chart only")
+// ─── SMT LINE STYLE ───────────────────────────────────────────────────────────
+color bullLineColor = input.color(color.new(#00e676, 0), "Bull Line Color", group="SMT Line")
+color bearLineColor = input.color(color.new(#ff1744, 0), "Bear Line Color", group="SMT Line")
+int smtLineWidth    = input.int(2, "Line Width", minval=1, maxval=5, group="SMT Line")
+string smtLineStyle = input.string("Solid", "Line Style", options=["Solid", "Dashed", "Dotted"], group="SMT Line")
 
-// ─── DATA ─────────────────────────────────────────────────────────────────────
-float aH = request.security(symA_input, "60", high)
-float aL = request.security(symA_input, "60", low)
-float bH = request.security(symB_input, "60", high)
-float bL = request.security(symB_input, "60", low)
+// ─── SMT LABEL STYLE ─────────────────────────────────────────────────────────
+bool showSmtLabel    = input.bool(true, "Show Label", group="SMT Label")
+color bullLabelColor = input.color(color.new(#00e676, 0), "Bull Label Color", group="SMT Label")
+color bearLabelColor = input.color(color.new(#ff1744, 0), "Bear Label Color", group="SMT Label")
+string smtLabelSz   = input.string("Small", "Label Size", options=["Tiny", "Small", "Normal", "Large"], group="SMT Label")
 
-// ─── 4HR BOUNDARY (6PM ET session aligned) ────────────────────────────────────
+// ─── SESSION TOGGLES ──────────────────────────────────────────────────────────
+bool show2AM  = input.bool(true, "2AM Block (2-6 ET)", group="Sessions")
+bool show6AM  = input.bool(true, "6AM Block (6-10 ET)", group="Sessions")
+bool show10AM = input.bool(true, "10AM Block (10-14 ET)", group="Sessions")
+
+// ─── SEPARATOR STYLE ──────────────────────────────────────────────────────────
+bool showSep    = input.bool(true, "Show 4HR Separators", group="Separator")
+color sepColor  = input.color(color.new(#ffcc00, 40), "Separator Color", group="Separator")
+string sepStyle = input.string("Dotted", "Separator Style", options=["Solid", "Dashed", "Dotted"], group="Separator")
+int sepWidth    = input.int(1, "Separator Width", minval=1, maxval=3, group="Separator")
+
+// ─── DAILY OPEN LINE ──────────────────────────────────────────────────────────
+bool showDailyOpen    = input.bool(true, "Show Daily Open (6PM ET)", group="Daily Open")
+color dailyOpenColor  = input.color(color.new(#ff9800, 0), "Daily Open Color", group="Daily Open")
+string dailyOpenStyle = input.string("Solid", "Daily Open Style", options=["Solid", "Dashed", "Dotted"], group="Daily Open")
+int dailyOpenWidth    = input.int(2, "Daily Open Width", minval=1, maxval=5, group="Daily Open")
+
+// ─── TABLE ────────────────────────────────────────────────────────────────────
+bool showTable = input.bool(true, "Show Table", group="Table")
+
+// ─── PSP CANDLE ────────────────────────────────────────────────────────────────
+bool showPSP      = input.bool(true, "Show PSP", group="PSP Candle")
+color pspColor    = input.color(color.new(#ff1744, 80), "PSP BG Color (20% opacity)", group="PSP Candle")
+bool pspBarColor  = input.bool(false, "Color PSP candle body", group="PSP Candle")
+color pspCandleClr = input.color(color.new(#e040fb, 0), "PSP Candle Color", group="PSP Candle")
+
+// ─── FRACTAL CANDLE CLOSURE ────────────────────────────────────────────────────
+bool showFCC       = input.bool(true, "Show Fractal Candle Closure", group="Fractal Candle")
+string fccTF       = input.string("60", "Sweep Timeframe", options=["15", "30", "60"], group="Fractal Candle")
+color fccBullColor = input.color(color.new(#ff1744, 0), "FCC Bullish Color", group="Fractal Candle")
+color fccBearColor = input.color(color.new(#ff1744, 0), "FCC Bearish Color", group="Fractal Candle")
+int fccLineWidth   = input.int(1, "FCC Line Width", minval=1, maxval=5, group="Fractal Candle")
+string fccLineStyleStr = input.string("Solid", "FCC Line Style", options=["Solid", "Dashed", "Dotted"], group="Fractal Candle")
+int fccExtraBars   = input.int(1, "Extra Bars After C2", minval=0, maxval=5, group="Fractal Candle")
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+lineStyle(string s) =>
+    s == "Dashed" ? line.style_dashed : s == "Dotted" ? line.style_dotted : line.style_solid
+
+labelSize(string s) =>
+    s == "Tiny" ? size.tiny : s == "Normal" ? size.normal : s == "Large" ? size.large : size.small
+
+// ─── DATA (optimized tuple requests) ──────────────────────────────────────────
+[aH, aL, aO, aC] = request.security(symA, "60", [high, low, open, close])
+[bH, bL, bO, bC] = request.security(symB, "60", [high, low, open, close])
+
+// FCC data from selected timeframe
+[fccH, fccL, fccC, fccPrevH, fccPrevL] = request.security(syminfo.tickerid, fccTF, [high, low, close, high[1], low[1]])
+
+// ─── TIME ─────────────────────────────────────────────────────────────────────
 int hr = hour(time, "America/New_York")
 int prevHr = hour(time[1], "America/New_York")
 int sinceOpen = (hr - 18 + 24) % 24
 bool newBlock = (sinceOpen % 4 == 0) and (hr != prevHr or session.isfirstbar)
 
-// Key blocks
+// Which block?
 bool is2AM  = hr >= 2 and hr < 6
 bool is6AM  = hr >= 6 and hr < 10
 bool is10AM = hr >= 10 and hr < 14
-bool isKey  = is2AM or is6AM or is10AM
+bool blockOn = (is2AM and show2AM) or (is6AM and show6AM) or (is10AM and show10AM)
 
-// ─── QUARTER INDEX ────────────────────────────────────────────────────────────
+// Daily open detection (6PM ET)
+bool isDailyOpen = (hr == 18 and prevHr != 18)
+
+// N days display filter
+int displayBars = displayDays * 24
+bool inDisplay = bar_index >= (last_bar_index - displayBars)
+
+// ─── SMT RESTRICTED TO 1HR ───────────────────────────────────────────────────
+bool is1H = timeframe.period == "60"
+
+// ─── QUARTER STATE ────────────────────────────────────────────────────────────
 var int q = 0
 var float q1aH = na, var float q1aL = na, var int q1b = na
 var float q2aH = na, var float q2aL = na, var int q2b = na
@@ -46,7 +107,13 @@ var float q1bH = na, var float q1bL = na
 var float q2bH = na, var float q2bL = na
 var float q3bH = na, var float q3bL = na
 
-if newBlock
+// Previous block Q4 only (cross-block)
+var float pv4aH = na, var float pv4aL = na, var int pv4b = na
+var float pv4bH = na, var float pv4bL = na
+
+if is1H and newBlock and blockOn
+    pv4aH := aH[1], pv4aL := aL[1], pv4b := bar_index - 1
+    pv4bH := bH[1], pv4bL := bL[1]
     q := 0
     q1aH := na, q1aL := na, q1b := na
     q2aH := na, q2aL := na, q2b := na
@@ -55,136 +122,139 @@ if newBlock
     q2bH := na, q2bL := na
     q3bH := na, q3bL := na
 
-if q == 0
-    q1aH := aH, q1aL := aL, q1b := bar_index
-    q1bH := bH, q1bL := bL
-else if q == 1
-    q2aH := aH, q2aL := aL, q2b := bar_index
-    q2bH := bH, q2bL := bL
-else if q == 2
-    q3aH := aH, q3aL := aL, q3b := bar_index
-    q3bH := bH, q3bL := bL
+if is1H and blockOn
+    if q == 0
+        q1aH := aH, q1aL := aL, q1b := bar_index
+        q1bH := bH, q1bL := bL
+    else if q == 1
+        q2aH := aH, q2aL := aL, q2b := bar_index
+        q2bH := bH, q2bL := bL
+    else if q == 2
+        q3aH := aH, q3aL := aL, q3b := bar_index
+        q3bH := bH, q3bL := bL
+    else if q == 3
+        q3bL := q3bL
 
-// ─── PRIOR HIGHS/LOWS ────────────────────────────────────────────────────────
+// ─── PRIOR HIGH/LOW (within same block) ──────────────────────────────────────
 float pHighA = na, float pLowA = na
 float pHighB = na, float pLowB = na
-int pHighBar = na, int pLowBar = na
+int pHBar = na, int pLBar = na
 
 if q == 1 and not na(q1aH)
     pHighA := q1aH, pLowA := q1aL
     pHighB := q1bH, pLowB := q1bL
-    pHighBar := q1b, pLowBar := q1b
+    pHBar := q1b, pLBar := q1b
 else if q == 2 and not na(q1aH) and not na(q2aH)
     pHighA := math.max(q1aH, q2aH)
     pLowA  := math.min(q1aL, q2aL)
     pHighB := math.max(q1bH, q2bH)
     pLowB  := math.min(q1bL, q2bL)
-    pHighBar := q1aH >= q2aH ? q1b : q2b
-    pLowBar  := q1aL <= q2aL ? q1b : q2b
+    pHBar := q1aH >= q2aH ? q1b : q2b
+    pLBar := q1aL <= q2aL ? q1b : q2b
 else if q == 3 and not na(q1aH) and not na(q2aH) and not na(q3aH)
     pHighA := math.max(q1aH, math.max(q2aH, q3aH))
     pLowA  := math.min(q1aL, math.min(q2aL, q3aL))
     pHighB := math.max(q1bH, math.max(q2bH, q3bH))
     pLowB  := math.min(q1bL, math.min(q2bL, q3bL))
-    pHighBar := q1aH >= q2aH and q1aH >= q3aH ? q1b : q2aH >= q3aH ? q2b : q3b
-    pLowBar  := q1aL <= q2aL and q1aL <= q3aL ? q1b : q2aL <= q3aL ? q2b : q3b
+    pHBar := q1aH >= q2aH and q1aH >= q3aH ? q1b : q2aH >= q3aH ? q2b : q3b
+    pLBar := q1aL <= q2aL and q1aL <= q3aL ? q1b : q2aL <= q3aL ? q2b : q3b
 
-// ─── SMT DETECTION ───────────────────────────────────────────────────────────
+// ─── SMT DETECTION (within block) ────────────────────────────────────────────
 bool bear = false
 bool bull = false
 
-if q >= 1 and not na(pHighA) and not na(pHighB)
+if is1H and blockOn and q >= 1 and not na(pHighA) and not na(pHighB)
     if (aH > pHighA and not (bH > pHighB)) or (bH > pHighB and not (aH > pHighA))
         bear := true
 
-if q >= 1 and not na(pLowA) and not na(pLowB)
+if is1H and blockOn and q >= 1 and not na(pLowA) and not na(pLowB)
     if (aL < pLowA and not (bL < pLowB)) or (bL < pLowB and not (aL < pLowA))
         bull := true
 
-// ─── DRAW: CLEAN SMT LINES WITH MIDPOINT TEXT ────────────────────────────────
-string qTag = q == 1 ? "Q2" : q == 2 ? "Q3" : q == 3 ? "Q4" : ""
+// ─── CROSS-BLOCK SMT (Q1 vs Q4 of previous block only) ───────────────────────
+bool crossBear = false
+bool crossBull = false
 
-if bear and not na(pHighBar)
-    line.new(pHighBar, pHighA, bar_index, aH, color=bearColor, width=lineWidth, style=line.style_solid)
-    int mid = math.round((pHighBar + bar_index) / 2)
-    label.new(mid, (pHighA + aH) / 2, qTag, style=label.style_none, textcolor=bearColor, size=size.small)
+if is1H and blockOn and q == 0 and not na(pv4aH) and not na(pv4bH)
+    if (aH > pv4aH and not (bH > pv4bH)) or (bH > pv4bH and not (aH > pv4aH))
+        crossBear := true
+    if (aL < pv4aL and not (bL < pv4bL)) or (bL < pv4bL and not (aL < pv4aL))
+        crossBull := true
 
-if bull and not na(pLowBar)
-    line.new(pLowBar, pLowA, bar_index, aL, color=bullColor, width=lineWidth, style=line.style_solid)
-    int mid = math.round((pLowBar + bar_index) / 2)
-    label.new(mid, (pLowA + aL) / 2, qTag, style=label.style_none, textcolor=bullColor, size=size.small)
+// ─── DRAW SMT (N days, 1HR only) ─────────────────────────────────────────────
+string qTag = q == 1 ? "Q2" : q == 2 ? "Q3" : q == 3 ? "Q4" : "Q1"
 
-// ─── BACKGROUND: QUARTER COLORS (key sessions only) ──────────────────────────
-color bgClr = na
-if isKey
-    if q == 0
-        bgClr := color.new(#9e9e9e, 92)
-    else if q == 1
-        bgClr := color.new(#ff5252, 92)
-    else if q == 2
-        bgClr := color.new(#69f0ae, 92)
-    else if q == 3
-        bgClr := color.new(#448aff, 92)
-bgcolor(bgClr, title="Quarter BG")
+if bear and not na(pHBar) and inDisplay
+    line.new(pHBar, pHighA, bar_index, aH, color=bearLineColor, width=smtLineWidth, style=lineStyle(smtLineStyle))
+    if showSmtLabel
+        label.new(bar_index, aH, qTag, style=label.style_none, textcolor=bearLabelColor, size=labelSize(smtLabelSz), xloc=xloc.bar_index)
 
-// ─── 4HR SEPARATOR ───────────────────────────────────────────────────────────
-if newBlock
-    color sepClr = isKey ? color.new(#ffcc00, 40) : color.new(color.gray, 80)
-    line.new(bar_index, high, bar_index, low, extend=extend.both, color=sepClr, style=line.style_dotted, width=1)
+if bull and not na(pLBar) and inDisplay
+    line.new(pLBar, pLowA, bar_index, aL, color=bullLineColor, width=smtLineWidth, style=lineStyle(smtLineStyle))
+    if showSmtLabel
+        label.new(bar_index, aL, qTag, style=label.style_none, textcolor=bullLabelColor, size=labelSize(smtLabelSz), xloc=xloc.bar_index)
+
+if crossBear and not na(pv4b) and inDisplay
+    line.new(pv4b, pv4aH, bar_index, aH, color=bearLineColor, width=smtLineWidth, style=lineStyle(smtLineStyle))
+    if showSmtLabel
+        label.new(bar_index, aH, "Q1", style=label.style_none, textcolor=bearLabelColor, size=labelSize(smtLabelSz), xloc=xloc.bar_index)
+
+if crossBull and not na(pv4b) and inDisplay
+    line.new(pv4b, pv4aL, bar_index, aL, color=bullLineColor, width=smtLineWidth, style=lineStyle(smtLineStyle))
+    if showSmtLabel
+        label.new(bar_index, aL, "Q1", style=label.style_none, textcolor=bullLabelColor, size=labelSize(smtLabelSz), xloc=xloc.bar_index)
+
+// ─── PSP DETECTION ────────────────────────────────────────────────────────────
+bool aBull = aC > aO
+bool bBull = bC > bO
+bool isPSP = is1H and blockOn and (aBull != bBull) and inDisplay
+
+bgcolor(isPSP and showPSP ? pspColor : na, title="PSP BG")
+barcolor(isPSP and showPSP and pspBarColor ? pspCandleClr : na, title="PSP Bar")
+
+// ─── 4HR SEPARATOR (1HR only) ────────────────────────────────────────────────
+if is1H and newBlock and showSep and blockOn and inDisplay
+    line.new(bar_index, high, bar_index, low, extend=extend.both, color=sepColor, style=lineStyle(sepStyle), width=sepWidth)
+
+// ─── DAILY OPEN LINE (6PM ET) ────────────────────────────────────────────────
+if is1H and isDailyOpen and showDailyOpen and inDisplay
+    line.new(bar_index, high, bar_index, low, extend=extend.both, color=dailyOpenColor, style=lineStyle(dailyOpenStyle), width=dailyOpenWidth)
 
 // ─── INCREMENT ───────────────────────────────────────────────────────────────
-if not newBlock
+if is1H and blockOn and not newBlock
     q := math.min(q + 1, 3)
 
 // ─── TABLE ───────────────────────────────────────────────────────────────────
-var int bQ2 = 0, var int bQ3 = 0, var int bQ4 = 0
-var int rQ2 = 0, var int rQ3 = 0, var int rQ4 = 0
-var int kB = 0, var int kR = 0
+var int totalBull = 0, var int totalBear = 0
 
-if bull
-    if q == 1
-        bQ2 += 1
-    else if q == 2
-        bQ3 += 1
-    else
-        bQ4 += 1
-    if isKey
-        kB += 1
+if (bull or crossBull) and inDisplay
+    totalBull += 1
+if (bear or crossBear) and inDisplay
+    totalBear += 1
 
-if bear
-    if q == 1
-        rQ2 += 1
-    else if q == 2
-        rQ3 += 1
-    else
-        rQ4 += 1
-    if isKey
-        kR += 1
-
-var table t = table.new(position.top_right, 3, 6, bgcolor=color.new(#000000, 70), border_width=1, border_color=color.new(#333333, 0))
+var table t = table.new(position.top_right, 3, 2, bgcolor=color.new(#000000, 70), border_width=1, border_color=color.new(#333333, 0))
 
 if showTable and barstate.islast
-    table.cell(t, 0, 0, "Sweep", text_color=#ffffff, text_size=size.small)
-    table.cell(t, 1, 0, "Bull", text_color=bullColor, text_size=size.small)
-    table.cell(t, 2, 0, "Bear", text_color=bearColor, text_size=size.small)
-    table.cell(t, 0, 1, "Q2>Q1", text_color=#aaaaaa, text_size=size.small)
-    table.cell(t, 1, 1, str.tostring(bQ2), text_color=#ffffff, text_size=size.small)
-    table.cell(t, 2, 1, str.tostring(rQ2), text_color=#ffffff, text_size=size.small)
-    table.cell(t, 0, 2, "Q3>Q1-2", text_color=#aaaaaa, text_size=size.small)
-    table.cell(t, 1, 2, str.tostring(bQ3), text_color=#ffffff, text_size=size.small)
-    table.cell(t, 2, 2, str.tostring(rQ3), text_color=#ffffff, text_size=size.small)
-    table.cell(t, 0, 3, "Q4>Q1-3", text_color=#aaaaaa, text_size=size.small)
-    table.cell(t, 1, 3, str.tostring(bQ4), text_color=#ffffff, text_size=size.small)
-    table.cell(t, 2, 3, str.tostring(rQ4), text_color=#ffffff, text_size=size.small)
-    table.cell(t, 0, 4, "TOTAL", text_color=#ffcc00, text_size=size.small)
-    table.cell(t, 1, 4, str.tostring(bQ2+bQ3+bQ4), text_color=#ffcc00, text_size=size.small)
-    table.cell(t, 2, 4, str.tostring(rQ2+rQ3+rQ4), text_color=#ffcc00, text_size=size.small)
-    table.cell(t, 0, 5, "2/6/10AM", text_color=#ff9800, text_size=size.small)
-    table.cell(t, 1, 5, str.tostring(kB), text_color=#ff9800, text_size=size.small)
-    table.cell(t, 2, 5, str.tostring(kR), text_color=#ff9800, text_size=size.small)
+    table.cell(t, 0, 0, str.tostring(displayDays) + "D", text_color=#ffcc00, text_size=size.small)
+    table.cell(t, 1, 0, "Bull", text_color=bullLineColor, text_size=size.small)
+    table.cell(t, 2, 0, "Bear", text_color=bearLineColor, text_size=size.small)
+    table.cell(t, 0, 1, "SMT", text_color=#aaaaaa, text_size=size.small)
+    table.cell(t, 1, 1, str.tostring(totalBull), text_color=#ffffff, text_size=size.small)
+    table.cell(t, 2, 1, str.tostring(totalBear), text_color=#ffffff, text_size=size.small)
+
+// ─── FRACTAL CANDLE CLOSURE (works on any chart TF) ──────────────────────────
+// Uses selected timeframe data — no labels, just horizontal lines
+bool fccBullSweep = not na(fccPrevL) and (fccL < fccPrevL) and (fccC > fccPrevL)
+bool fccBearSweep = not na(fccPrevH) and (fccH > fccPrevH) and (fccC < fccPrevH)
+
+if showFCC and fccBullSweep and inDisplay
+    line.new(bar_index - 1, fccPrevL, bar_index + fccExtraBars, fccPrevL, color=fccBullColor, width=fccLineWidth, style=lineStyle(fccLineStyleStr))
+
+if showFCC and fccBearSweep and inDisplay
+    line.new(bar_index - 1, fccPrevH, bar_index + fccExtraBars, fccPrevH, color=fccBearColor, width=fccLineWidth, style=lineStyle(fccLineStyleStr))
 
 // ─── ALERTS ──────────────────────────────────────────────────────────────────
-alertcondition(bull and isKey, title="Key Bull SMT", message="Bull SMT key session {{ticker}}")
-alertcondition(bear and isKey, title="Key Bear SMT", message="Bear SMT key session {{ticker}}")
-alertcondition(bull, title="Bull SMT", message="Bull SMT {{ticker}}")
-alertcondition(bear, title="Bear SMT", message="Bear SMT {{ticker}}")
+alertcondition(bull or crossBull, title="Bull SMT", message="Bull SMT {{ticker}}")
+alertcondition(bear or crossBear, title="Bear SMT", message="Bear SMT {{ticker}}")
+alertcondition(fccBullSweep, title="FCC Bull Sweep", message="Fractal Bull Sweep {{ticker}}")
+alertcondition(fccBearSweep, title="FCC Bear Sweep", message="Fractal Bear Sweep {{ticker}}")

@@ -1,0 +1,196 @@
+// This Pine Script™ source code is subject to the terms of the Mozilla Public License 2.0
+// © Daily Quarter 4HR Sequence - NQ/YM
+// 6 quarters per trading day (6 x 4HR candles)
+// SMT wick-to-wick lines between correlated pair. Today only.
+
+//@version=6
+indicator("Daily Quarter 4HR Sequence", overlay=true, max_lines_count=500, max_labels_count=200)
+
+// ─── SYMBOLS ──────────────────────────────────────────────────────────────────
+string symA = input.symbol("NQ1!", "Symbol A", group="Symbols")
+string symB = input.symbol("YM1!", "Symbol B", group="Symbols")
+
+// ─── SMT LINE STYLE ───────────────────────────────────────────────────────────
+color bullLineColor = input.color(color.new(#00e676, 0), "Bull Line Color", group="SMT Line")
+color bearLineColor = input.color(color.new(#ff1744, 0), "Bear Line Color", group="SMT Line")
+int smtLineWidth    = input.int(2, "Line Width", minval=1, maxval=5, group="SMT Line")
+string smtLineStyle = input.string("Solid", "Line Style", options=["Solid", "Dashed", "Dotted"], group="SMT Line")
+
+// ─── SMT LABEL STYLE ─────────────────────────────────────────────────────────
+bool showSmtLabel    = input.bool(true, "Show Label", group="SMT Label")
+color bullLabelColor = input.color(color.new(#00e676, 0), "Bull Label Color", group="SMT Label")
+color bearLabelColor = input.color(color.new(#ff1744, 0), "Bear Label Color", group="SMT Label")
+string smtLabelSz   = input.string("Small", "Label Size", options=["Tiny", "Small", "Normal", "Large"], group="SMT Label")
+
+// ─── SEPARATOR STYLE ──────────────────────────────────────────────────────────
+bool showSep    = input.bool(true, "Show Day Separator", group="Separator")
+color sepColor  = input.color(color.new(#ffcc00, 40), "Separator Color", group="Separator")
+string sepStyle = input.string("Dotted", "Separator Style", options=["Solid", "Dashed", "Dotted"], group="Separator")
+int sepWidth    = input.int(1, "Separator Width", minval=1, maxval=3, group="Separator")
+
+// ─── TABLE ────────────────────────────────────────────────────────────────────
+bool showTable = input.bool(true, "Show Table", group="Table")
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+lineStyle(string s) =>
+    s == "Dashed" ? line.style_dashed : s == "Dotted" ? line.style_dotted : line.style_solid
+
+labelSize(string s) =>
+    s == "Tiny" ? size.tiny : s == "Normal" ? size.normal : s == "Large" ? size.large : size.small
+
+// ─── TIMEFRAME CHECK ──────────────────────────────────────────────────────────
+if timeframe.period != "240"
+    runtime.error("4HR chart only")
+
+// ─── DATA ─────────────────────────────────────────────────────────────────────
+// Symbol A = chart data (high/low), Symbol B = request correlated pair
+float aH = high
+float aL = low
+float bH = request.security(symB, "240", high)
+float bL = request.security(symB, "240", low)
+
+// ─── NEW DAY DETECTION ────────────────────────────────────────────────────────
+// Trading day starts at 6PM ET. Detect when day changes.
+int todayDate = dayofweek(time, "America/New_York")
+int prevDate  = dayofweek(time[1], "America/New_York")
+bool newDay = todayDate != prevDate or bar_index == 0
+
+// Today filter
+bool isToday = time >= timestamp("America/New_York", year(timenow, "America/New_York"), month(timenow, "America/New_York"), dayofmonth(timenow, "America/New_York"), 0, 0) - 86400000
+
+// ─── QUARTER STATE (6 quarters per day) ───────────────────────────────────────
+var int q = 0
+var float q1aH = na, var float q1aL = na, var int q1b = na
+var float q2aH = na, var float q2aL = na, var int q2b = na
+var float q3aH = na, var float q3aL = na, var int q3b = na
+var float q4aH = na, var float q4aL = na, var int q4b = na
+var float q5aH = na, var float q5aL = na, var int q5b = na
+var float q1bH = na, var float q1bL = na
+var float q2bH = na, var float q2bL = na
+var float q3bH = na, var float q3bL = na
+var float q4bH = na, var float q4bL = na
+var float q5bH = na, var float q5bL = na
+
+if newDay
+    q := 0
+    q1aH := na, q1aL := na, q1b := na
+    q2aH := na, q2aL := na, q2b := na
+    q3aH := na, q3aL := na, q3b := na
+    q4aH := na, q4aL := na, q4b := na
+    q5aH := na, q5aL := na, q5b := na
+    q1bH := na, q1bL := na
+    q2bH := na, q2bL := na
+    q3bH := na, q3bL := na
+    q4bH := na, q4bL := na
+    q5bH := na, q5bL := na
+
+// Store quarter data
+if q == 0
+    q1aH := aH, q1aL := aL, q1b := bar_index
+    q1bH := bH, q1bL := bL
+else if q == 1
+    q2aH := aH, q2aL := aL, q2b := bar_index
+    q2bH := bH, q2bL := bL
+else if q == 2
+    q3aH := aH, q3aL := aL, q3b := bar_index
+    q3bH := bH, q3bL := bL
+else if q == 3
+    q4aH := aH, q4aL := aL, q4b := bar_index
+    q4bH := bH, q4bL := bL
+else if q == 4
+    q5aH := aH, q5aL := aL, q5b := bar_index
+    q5bH := bH, q5bL := bL
+else if q == 5
+    q5bL := q5bL
+
+// ─── PRIOR HIGH/LOW ──────────────────────────────────────────────────────────
+float pHighA = na, float pLowA = na
+float pHighB = na, float pLowB = na
+int pHBar = na, int pLBar = na
+
+if q >= 1 and not na(q1aH)
+    pHighA := q1aH, pLowA := q1aL
+    pHighB := q1bH, pLowB := q1bL
+    pHBar := q1b, pLBar := q1b
+
+if q >= 2 and not na(q2aH)
+    if q2aH > nz(pHighA)
+        pHighA := q2aH, pHighB := q2bH, pHBar := q2b
+    if q2aL < nz(pLowA, 999999)
+        pLowA := q2aL, pLowB := q2bL, pLBar := q2b
+
+if q >= 3 and not na(q3aH)
+    if q3aH > nz(pHighA)
+        pHighA := q3aH, pHighB := q3bH, pHBar := q3b
+    if q3aL < nz(pLowA, 999999)
+        pLowA := q3aL, pLowB := q3bL, pLBar := q3b
+
+if q >= 4 and not na(q4aH)
+    if q4aH > nz(pHighA)
+        pHighA := q4aH, pHighB := q4bH, pHBar := q4b
+    if q4aL < nz(pLowA, 999999)
+        pLowA := q4aL, pLowB := q4bL, pLBar := q4b
+
+if q >= 5 and not na(q5aH)
+    if q5aH > nz(pHighA)
+        pHighA := q5aH, pHighB := q5bH, pHBar := q5b
+    if q5aL < nz(pLowA, 999999)
+        pLowA := q5aL, pLowB := q5bL, pLBar := q5b
+
+// ─── SMT DETECTION ───────────────────────────────────────────────────────────
+bool bear = false
+bool bull = false
+
+if q >= 1 and not na(pHighA) and not na(pHighB)
+    if (aH > pHighA and not (bH > pHighB)) or (bH > pHighB and not (aH > pHighA))
+        bear := true
+
+if q >= 1 and not na(pLowA) and not na(pLowB)
+    if (aL < pLowA and not (bL < pLowB)) or (bL < pLowB and not (aL < pLowA))
+        bull := true
+
+// ─── DRAW (today only) ───────────────────────────────────────────────────────
+string qTag = q == 1 ? "Q2" : q == 2 ? "Q3" : q == 3 ? "Q4" : q == 4 ? "Q5" : q == 5 ? "Q6" : "Q1"
+
+if bear and not na(pHBar) and isToday
+    line.new(pHBar, pHighA, bar_index, aH, color=bearLineColor, width=smtLineWidth, style=lineStyle(smtLineStyle))
+    if showSmtLabel
+        label.new(bar_index, aH, qTag, style=label.style_none, textcolor=bearLabelColor, size=labelSize(smtLabelSz), xloc=xloc.bar_index)
+
+if bull and not na(pLBar) and isToday
+    line.new(pLBar, pLowA, bar_index, aL, color=bullLineColor, width=smtLineWidth, style=lineStyle(smtLineStyle))
+    if showSmtLabel
+        label.new(bar_index, aL, qTag, style=label.style_none, textcolor=bullLabelColor, size=labelSize(smtLabelSz), xloc=xloc.bar_index)
+
+// ─── DAY SEPARATOR (today only) ──────────────────────────────────────────────
+if newDay and showSep and isToday
+    line.new(bar_index, high, bar_index, low, extend=extend.both, color=sepColor, style=lineStyle(sepStyle), width=sepWidth)
+
+// ─── INCREMENT ───────────────────────────────────────────────────────────────
+if not newDay
+    q := math.min(q + 1, 5)
+
+// ─── TABLE ───────────────────────────────────────────────────────────────────
+var int totalBull = 0, var int totalBear = 0
+
+if bull and isToday
+    totalBull += 1
+if bear and isToday
+    totalBear += 1
+
+var table t = table.new(position.top_right, 3, 3, bgcolor=color.new(#000000, 70), border_width=1, border_color=color.new(#333333, 0))
+
+if showTable and barstate.islast
+    table.cell(t, 0, 0, "Today", text_color=#ffffff, text_size=size.small)
+    table.cell(t, 1, 0, "Bull", text_color=bullLineColor, text_size=size.small)
+    table.cell(t, 2, 0, "Bear", text_color=bearLineColor, text_size=size.small)
+    table.cell(t, 0, 1, "SMT", text_color=#aaaaaa, text_size=size.small)
+    table.cell(t, 1, 1, str.tostring(totalBull), text_color=#ffffff, text_size=size.small)
+    table.cell(t, 2, 1, str.tostring(totalBear), text_color=#ffffff, text_size=size.small)
+    table.cell(t, 0, 2, "4HR/Day", text_color=#ffcc00, text_size=size.small)
+    table.cell(t, 1, 2, "6Q", text_color=#ffcc00, text_size=size.small)
+    table.cell(t, 2, 2, "mode", text_color=#ffcc00, text_size=size.small)
+
+// ─── ALERTS ──────────────────────────────────────────────────────────────────
+alertcondition(bull, title="Bull SMT", message="Bull SMT {{ticker}}")
+alertcondition(bear, title="Bear SMT", message="Bear SMT {{ticker}}")

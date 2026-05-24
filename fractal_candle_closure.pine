@@ -1,0 +1,74 @@
+// This Pine Script™ source code is subject to the terms of the Mozilla Public License 2.0
+// © Fractal Candle Closure
+// C1/C2 sweep reversal + C3 confirmation pattern
+// C2 pattern: C2 sweeps C1 low/high but closes back above/below = instant reversal
+// C3 pattern: C2 sweeps C1 low/high and closes through (fails) → C3 engulfs C2 open = reversal
+// Lines: Horizontal at swept level / C2 open level
+
+//@version=6
+indicator("Fractal Candle Closure", overlay=true, max_lines_count=500, max_labels_count=200)
+
+// ─── DISPLAY ──────────────────────────────────────────────────────────────────
+int displayDays = input.int(3, "Show Sweep Within Last N Days", minval=1, maxval=20, group="Display")
+
+// ─── C2 SWEEP STYLE ──────────────────────────────────────────────────────────
+bool showC2       = input.bool(true, "Show C2 Sweep", group="C2 Sweep")
+color c2BullColor = input.color(color.new(#ff1744, 0), "C2 Bullish Color", group="C2 Sweep")
+color c2BearColor = input.color(color.new(#ff1744, 0), "C2 Bearish Color", group="C2 Sweep")
+int c2LineWidth   = input.int(1, "C2 Line Width", minval=1, maxval=5, group="C2 Sweep")
+string c2LineStyleStr = input.string("Solid", "C2 Line Style", options=["Solid", "Dashed", "Dotted"], group="C2 Sweep")
+int c2ExtraBars   = input.int(1, "C2 Extra Bars", minval=0, maxval=5, group="C2 Sweep")
+
+// ─── C3 SWEEP STYLE ──────────────────────────────────────────────────────────
+bool showC3       = input.bool(true, "Show C3 Closure", group="C3 Closure")
+color c3BullColor = input.color(color.new(#2196f3, 0), "C3 Bullish Color", group="C3 Closure")
+color c3BearColor = input.color(color.new(#2196f3, 0), "C3 Bearish Color", group="C3 Closure")
+int c3LineWidth   = input.int(1, "C3 Line Width", minval=1, maxval=5, group="C3 Closure")
+string c3LineStyleStr = input.string("Dashed", "C3 Line Style", options=["Solid", "Dashed", "Dotted"], group="C3 Closure")
+int c3ExtraBars   = input.int(1, "C3 Extra Bars", minval=0, maxval=5, group="C3 Closure")
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+lineStyle(string s) =>
+    s == "Dashed" ? line.style_dashed : s == "Dotted" ? line.style_dotted : line.style_solid
+
+// ─── N DAYS DISPLAY FILTER ────────────────────────────────────────────────────
+int displayBars = displayDays * 24
+bool inDisplay = bar_index >= (last_bar_index - displayBars)
+
+// ─── C2 PATTERN (instant reversal) ───────────────────────────────────────────
+// Bullish C2: sweeps C1 low, closes above C1 low
+bool c2Bull = (low < low[1]) and (close > low[1])
+// Bearish C2: sweeps C1 high, closes below C1 high
+bool c2Bear = (high > high[1]) and (close < high[1])
+
+// ─── C3 PATTERN (delayed reversal) ───────────────────────────────────────────
+// Bullish C3: C2 swept C1 low AND closed below C1 low (failed)
+//             Now C3 (current bar) closes above C2's open
+bool c2FailedBull = (low[1] < low[2]) and (close[1] < low[2])  // C2 swept C1 low but closed below
+bool c3Bull = c2FailedBull and (close > open[1])                 // C3 closes above C2 open
+
+// Bearish C3: C2 swept C1 high AND closed above C1 high (failed)
+//             Now C3 (current bar) closes below C2's open
+bool c2FailedBear = (high[1] > high[2]) and (close[1] > high[2])  // C2 swept C1 high but closed above
+bool c3Bear = c2FailedBear and (close < open[1])                    // C3 closes below C2 open
+
+// ─── DRAW C2 SWEEPS ──────────────────────────────────────────────────────────
+if showC2 and c2Bull and inDisplay
+    line.new(bar_index - 1, low[1], bar_index + c2ExtraBars, low[1], color=c2BullColor, width=c2LineWidth, style=lineStyle(c2LineStyleStr))
+
+if showC2 and c2Bear and inDisplay
+    line.new(bar_index - 1, high[1], bar_index + c2ExtraBars, high[1], color=c2BearColor, width=c2LineWidth, style=lineStyle(c2LineStyleStr))
+
+// ─── DRAW C3 CLOSURE ─────────────────────────────────────────────────────────
+// Line at C2's open level (the level C3 engulfs)
+if showC3 and c3Bull and inDisplay
+    line.new(bar_index - 1, open[1], bar_index + c3ExtraBars, open[1], color=c3BullColor, width=c3LineWidth, style=lineStyle(c3LineStyleStr))
+
+if showC3 and c3Bear and inDisplay
+    line.new(bar_index - 1, open[1], bar_index + c3ExtraBars, open[1], color=c3BearColor, width=c3LineWidth, style=lineStyle(c3LineStyleStr))
+
+// ─── ALERTS ──────────────────────────────────────────────────────────────────
+alertcondition(c2Bull, title="C2 Bull Sweep", message="C2 Bullish Sweep {{ticker}}")
+alertcondition(c2Bear, title="C2 Bear Sweep", message="C2 Bearish Sweep {{ticker}}")
+alertcondition(c3Bull, title="C3 Bull Closure", message="C3 Bullish Reversal {{ticker}}")
+alertcondition(c3Bear, title="C3 Bear Closure", message="C3 Bearish Reversal {{ticker}}")

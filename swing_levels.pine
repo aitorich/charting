@@ -1,0 +1,53 @@
+// This Pine Script™ source code is subject to the terms of the Mozilla Public License 2.0
+// © [Astrophile] - Swing Levels
+// Valid Swing High / Swing Low detection with horizontal lines
+// Works on 15m+ timeframes. N days lookback.
+
+//@version=6
+indicator("[Astrophile] - Swing Levels", overlay=true, max_lines_count=500)
+
+// ─── DISPLAY ──────────────────────────────────────────────────────────────────
+int displayDays = input.int(3, "Show Last N Days", minval=1, maxval=20, group="Display")
+
+// ─── SWING SETTINGS ───────────────────────────────────────────────────────────
+int swingStrength = input.int(2, "Swing Strength (bars each side)", minval=1, maxval=10, group="Swing Detection")
+
+// ─── SWING HIGH STYLE ─────────────────────────────────────────────────────────
+bool showSwingH      = input.bool(true, "Show Swing High", group="Swing High")
+color swingHColor    = input.color(color.new(#ff1744, 0), "Swing High Color", group="Swing High")
+int swingHWidth      = input.int(1, "Swing High Width", minval=1, maxval=5, group="Swing High")
+string swingHStyle   = input.string("Solid", "Swing High Style", options=["Solid", "Dashed", "Dotted"], group="Swing High")
+int swingHExtend     = input.int(5, "Swing High Extend (bars)", minval=1, maxval=20, group="Swing High")
+
+// ─── SWING LOW STYLE ──────────────────────────────────────────────────────────
+bool showSwingL      = input.bool(true, "Show Swing Low", group="Swing Low")
+color swingLColor    = input.color(color.new(#00e676, 0), "Swing Low Color", group="Swing Low")
+int swingLWidth      = input.int(1, "Swing Low Width", minval=1, maxval=5, group="Swing Low")
+string swingLStyle   = input.string("Solid", "Swing Low Style", options=["Solid", "Dashed", "Dotted"], group="Swing Low")
+int swingLExtend     = input.int(5, "Swing Low Extend (bars)", minval=1, maxval=20, group="Swing Low")
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+lineStyle(string s) =>
+    s == "Dashed" ? line.style_dashed : s == "Dotted" ? line.style_dotted : line.style_solid
+
+// ─── N DAYS DISPLAY FILTER ────────────────────────────────────────────────────
+int barsPerDay = timeframe.in_seconds() > 0 ? math.round(86400 / timeframe.in_seconds()) : 24
+int displayBars = displayDays * barsPerDay
+bool inDisplay = bar_index >= (last_bar_index - displayBars)
+
+// ─── SWING DETECTION ──────────────────────────────────────────────────────────
+// Swing High: ta.pivothigh returns the high value if confirmed, na otherwise
+// Confirmed swingStrength bars ago
+float swH = ta.pivothigh(high, swingStrength, swingStrength)
+float swL = ta.pivotlow(low, swingStrength, swingStrength)
+
+// ─── DRAW ─────────────────────────────────────────────────────────────────────
+if showSwingH and not na(swH) and inDisplay
+    line.new(bar_index - swingStrength, swH, bar_index - swingStrength + swingHExtend, swH, color=swingHColor, width=swingHWidth, style=lineStyle(swingHStyle))
+
+if showSwingL and not na(swL) and inDisplay
+    line.new(bar_index - swingStrength, swL, bar_index - swingStrength + swingLExtend, swL, color=swingLColor, width=swingLWidth, style=lineStyle(swingLStyle))
+
+// ─── ALERTS ──────────────────────────────────────────────────────────────────
+alertcondition(not na(swH), title="Swing High", message="Swing High detected {{ticker}}")
+alertcondition(not na(swL), title="Swing Low", message="Swing Low detected {{ticker}}")

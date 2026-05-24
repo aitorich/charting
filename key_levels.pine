@@ -1,0 +1,225 @@
+// This Pine Script™ source code is subject to the terms of the Mozilla Public License 2.0
+// © [Astrophile] - Key Levels
+// FVG (Fair Value Gap) + Swing High/Low + C2 Sweep at Key Levels
+// Swing lines change to dashed when C2 sweeps them
+// FVG boxes get highlighted when C2 sweeps into them
+// Works on 15m+ timeframes. N days lookback.
+
+//@version=6
+indicator("[Astrophile] - Key Levels", overlay=true, max_boxes_count=500, max_lines_count=500)
+
+// ─── DISPLAY ──────────────────────────────────────────────────────────────────
+int displayDays = input.int(3, "Show Last N Days", minval=1, maxval=20, group="Display")
+
+// ─── BULLISH FVG STYLE ────────────────────────────────────────────────────────
+bool showBullFVG      = input.bool(true, "Show Bullish FVG", group="Bullish FVG")
+color bullFVGColor    = input.color(color.new(#00e676, 80), "Bullish FVG Color", group="Bullish FVG")
+color bullBorderColor = input.color(color.new(#00e676, 50), "Bullish Border Color", group="Bullish FVG")
+int bullBorderWidth   = input.int(1, "Bullish Border Width", minval=0, maxval=3, group="Bullish FVG")
+
+// ─── BEARISH FVG STYLE ────────────────────────────────────────────────────────
+bool showBearFVG      = input.bool(true, "Show Bearish FVG", group="Bearish FVG")
+color bearFVGColor    = input.color(color.new(#ff1744, 80), "Bearish FVG Color", group="Bearish FVG")
+color bearBorderColor = input.color(color.new(#ff1744, 50), "Bearish Border Color", group="Bearish FVG")
+int bearBorderWidth   = input.int(1, "Bearish Border Width", minval=0, maxval=3, group="Bearish FVG")
+
+// ─── FVG BOX SETTINGS ─────────────────────────────────────────────────────────
+int boxExtend = input.int(5, "FVG Box Extend (bars right)", minval=1, maxval=20, group="FVG Box")
+
+// ─── SWING SETTINGS ───────────────────────────────────────────────────────────
+int swingStrength = input.int(2, "Swing Strength (bars each side)", minval=1, maxval=10, group="Swing Detection")
+
+// ─── SWING HIGH STYLE ─────────────────────────────────────────────────────────
+bool showSwingH    = input.bool(true, "Show Swing High", group="Swing High")
+color swingHColor  = input.color(color.new(#ff1744, 0), "Swing High Color", group="Swing High")
+int swingHWidth    = input.int(1, "Swing High Width", minval=1, maxval=5, group="Swing High")
+string swingHStyle = input.string("Solid", "Swing High Style", options=["Solid", "Dashed", "Dotted"], group="Swing High")
+int swingHExtend   = input.int(5, "Swing High Extend (bars)", minval=1, maxval=20, group="Swing High")
+
+// ─── SWING LOW STYLE ──────────────────────────────────────────────────────────
+bool showSwingL    = input.bool(true, "Show Swing Low", group="Swing Low")
+color swingLColor  = input.color(color.new(#00e676, 0), "Swing Low Color", group="Swing Low")
+int swingLWidth    = input.int(1, "Swing Low Width", minval=1, maxval=5, group="Swing Low")
+string swingLStyle = input.string("Solid", "Swing Low Style", options=["Solid", "Dashed", "Dotted"], group="Swing Low")
+int swingLExtend   = input.int(5, "Swing Low Extend (bars)", minval=1, maxval=20, group="Swing Low")
+
+// ─── C2 AT KEY LEVEL STYLE ───────────────────────────────────────────────────
+bool showC2KL       = input.bool(true, "Show C2 at Key Level", group="C2 Key Level")
+color c2klBullColor = input.color(color.new(#ffcc00, 0), "C2 KL Bullish Color", group="C2 Key Level")
+color c2klBearColor = input.color(color.new(#ffcc00, 0), "C2 KL Bearish Color", group="C2 Key Level")
+int c2klLineWidth   = input.int(2, "C2 KL Line Width", minval=1, maxval=5, group="C2 Key Level")
+string c2klLineStyle = input.string("Solid", "C2 KL Line Style", options=["Solid", "Dashed", "Dotted"], group="C2 Key Level")
+int c2klExtraBars   = input.int(2, "C2 KL Extra Bars", minval=0, maxval=5, group="C2 Key Level")
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+lineStyle(string s) =>
+    s == "Dashed" ? line.style_dashed : s == "Dotted" ? line.style_dotted : line.style_solid
+
+// ─── N DAYS DISPLAY FILTER ────────────────────────────────────────────────────
+int barsPerDay = timeframe.in_seconds() > 0 ? math.round(86400 / timeframe.in_seconds()) : 24
+int displayBars = displayDays * barsPerDay
+bool inDisplay = bar_index >= (last_bar_index - displayBars)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── FVG DETECTION ────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+
+float bullFVGTop = low
+float bullFVGBot = high[2]
+bool bullFVG = bullFVGTop > bullFVGBot
+
+float bearFVGTop = low[2]
+float bearFVGBot = high
+bool bearFVG = bearFVGBot < bearFVGTop
+
+// Store FVG levels + box references for highlighting
+var float[] bullFVGTops = array.new_float(0)
+var float[] bullFVGBots = array.new_float(0)
+var array<box> bullFVGBoxes = array.new<box>(0)
+var float[] bearFVGTops = array.new_float(0)
+var float[] bearFVGBots = array.new_float(0)
+var array<box> bearFVGBoxes = array.new<box>(0)
+
+if bullFVG
+    array.push(bullFVGTops, bullFVGTop)
+    array.push(bullFVGBots, bullFVGBot)
+    if inDisplay and showBullFVG
+        array.push(bullFVGBoxes, box.new(bar_index - 1, bullFVGTop, bar_index + boxExtend, bullFVGBot, bgcolor=bullFVGColor, border_color=bullBorderColor, border_width=bullBorderWidth))
+    else
+        array.push(bullFVGBoxes, na)
+    if array.size(bullFVGTops) > 20
+        array.shift(bullFVGTops)
+        array.shift(bullFVGBots)
+        box old = array.shift(bullFVGBoxes)
+        if not na(old)
+            box.delete(old)
+
+if bearFVG
+    array.push(bearFVGTops, bearFVGTop)
+    array.push(bearFVGBots, bearFVGBot)
+    if inDisplay and showBearFVG
+        array.push(bearFVGBoxes, box.new(bar_index - 1, bearFVGTop, bar_index + boxExtend, bearFVGBot, bgcolor=bearFVGColor, border_color=bearBorderColor, border_width=bearBorderWidth))
+    else
+        array.push(bearFVGBoxes, na)
+    if array.size(bearFVGTops) > 20
+        array.shift(bearFVGTops)
+        array.shift(bearFVGBots)
+        box old = array.shift(bearFVGBoxes)
+        if not na(old)
+            box.delete(old)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── SWING DETECTION ──────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+
+float swH = ta.pivothigh(high, swingStrength, swingStrength)
+float swL = ta.pivotlow(low, swingStrength, swingStrength)
+
+// Store swing levels + line references for style change
+var float[] swingHighs = array.new_float(0)
+var array<line> swingHLines = array.new<line>(0)
+var float[] swingLows  = array.new_float(0)
+var array<line> swingLLines = array.new<line>(0)
+
+if not na(swH)
+    array.push(swingHighs, swH)
+    if inDisplay and showSwingH
+        array.push(swingHLines, line.new(bar_index - swingStrength, swH, bar_index - swingStrength + swingHExtend, swH, color=swingHColor, width=swingHWidth, style=lineStyle(swingHStyle)))
+    else
+        array.push(swingHLines, na)
+    if array.size(swingHighs) > 20
+        array.shift(swingHighs)
+        line old = array.shift(swingHLines)
+        if not na(old)
+            line.delete(old)
+
+if not na(swL)
+    array.push(swingLows, swL)
+    if inDisplay and showSwingL
+        array.push(swingLLines, line.new(bar_index - swingStrength, swL, bar_index - swingStrength + swingLExtend, swL, color=swingLColor, width=swingLWidth, style=lineStyle(swingLStyle)))
+    else
+        array.push(swingLLines, na)
+    if array.size(swingLows) > 20
+        array.shift(swingLows)
+        line old = array.shift(swingLLines)
+        if not na(old)
+            line.delete(old)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── C2 SWEEP AT KEY LEVEL ────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+
+bool c2BullRaw = (low < low[1]) and (close > low[1])
+bool c2BearRaw = (high > high[1]) and (close < high[1])
+
+bool c2BullAtSwing = false
+bool c2BearAtSwing = false
+bool c2BullAtFVG = false
+bool c2BearAtFVG = false
+
+// Bullish C2: takes out swing low → change that line to dashed
+if c2BullRaw and array.size(swingLows) > 0
+    for i = 0 to array.size(swingLows) - 1
+        if low < array.get(swingLows, i)
+            c2BullAtSwing := true
+            line ln = array.get(swingLLines, i)
+            if not na(ln)
+                line.set_style(ln, line.style_dashed)
+            break
+
+// Bearish C2: takes out swing high → change that line to dashed
+if c2BearRaw and array.size(swingHighs) > 0
+    for i = 0 to array.size(swingHighs) - 1
+        if high > array.get(swingHighs, i)
+            c2BearAtSwing := true
+            line ln = array.get(swingHLines, i)
+            if not na(ln)
+                line.set_style(ln, line.style_dashed)
+            break
+
+// Bullish C2: sweeps into bullish FVG → highlight that box
+if c2BullRaw and array.size(bullFVGTops) > 0
+    for i = 0 to array.size(bullFVGTops) - 1
+        float fTop = array.get(bullFVGTops, i)
+        float fBot = array.get(bullFVGBots, i)
+        if low <= fTop and low >= fBot
+            c2BullAtFVG := true
+            box bx = array.get(bullFVGBoxes, i)
+            if not na(bx)
+                box.set_bgcolor(bx, color.new(#00e676, 50))
+                box.set_border_color(bx, color.new(#ffcc00, 0))
+                box.set_border_width(bx, 2)
+            break
+
+// Bearish C2: sweeps into bearish FVG → highlight that box
+if c2BearRaw and array.size(bearFVGTops) > 0
+    for i = 0 to array.size(bearFVGTops) - 1
+        float fTop = array.get(bearFVGTops, i)
+        float fBot = array.get(bearFVGBots, i)
+        if high >= fBot and high <= fTop
+            c2BearAtFVG := true
+            box bx = array.get(bearFVGBoxes, i)
+            if not na(bx)
+                box.set_bgcolor(bx, color.new(#ff1744, 50))
+                box.set_border_color(bx, color.new(#ffcc00, 0))
+                box.set_border_width(bx, 2)
+            break
+
+// Valid C2 at key level
+bool c2klBull = c2BullRaw and (c2BullAtSwing or c2BullAtFVG)
+bool c2klBear = c2BearRaw and (c2BearAtSwing or c2BearAtFVG)
+
+// Draw C2 at key level line
+if showC2KL and c2klBull and inDisplay
+    line.new(bar_index - 1, low[1], bar_index + c2klExtraBars, low[1], color=c2klBullColor, width=c2klLineWidth, style=lineStyle(c2klLineStyle))
+
+if showC2KL and c2klBear and inDisplay
+    line.new(bar_index - 1, high[1], bar_index + c2klExtraBars, high[1], color=c2klBearColor, width=c2klLineWidth, style=lineStyle(c2klLineStyle))
+
+// ─── ALERTS ──────────────────────────────────────────────────────────────────
+alertcondition(bullFVG, title="Bullish FVG", message="Bullish FVG {{ticker}}")
+alertcondition(bearFVG, title="Bearish FVG", message="Bearish FVG {{ticker}}")
+alertcondition(not na(swH), title="Swing High", message="Swing High {{ticker}}")
+alertcondition(not na(swL), title="Swing Low", message="Swing Low {{ticker}}")
+alertcondition(c2klBull, title="C2 Bull at Key Level", message="C2 Bull sweep at key level {{ticker}}")
+alertcondition(c2klBear, title="C2 Bear at Key Level", message="C2 Bear sweep at key level {{ticker}}")
