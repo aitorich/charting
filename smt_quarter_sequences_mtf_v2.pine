@@ -1,0 +1,379 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © random55598
+
+// SMT Quarter Sequences (MTF) v2 - Clean Visual Redesign
+// "Silent when nothing happens. Alive when C3 is active."
+// Level 1: 4HR C2 → 4x1HR quarter SMT in C3
+// Level 2: 1HR C2 → 4x15m quarter SMT in C3
+// Active: 12AM–4PM ET | Daily reset at midnight
+
+//@version=6
+indicator("SMT Quarter Sequences (MTF) v2", overlay=true, max_lines_count=500, max_labels_count=500)
+
+// ─── SYMBOLS ──────────────────────────────────────────────────────────────────
+string symA = input.symbol("NQ1!", "Symbol A", group="Symbols")
+string symB = input.symbol("YM1!", "Symbol B", group="Symbols")
+
+// ─── DISPLAY ──────────────────────────────────────────────────────────────────
+int displayDays = input.int(1, "Show Last N Days", minval=1, maxval=10, group="Display")
+
+// ─── 4HR C2 STYLE ────────────────────────────────────────────────────────────
+bool show4hC2       = input.bool(true, "Show 4HR C2", group="4HR C2")
+color c2Bull4hClr   = input.color(color.new(#00bcd4, 0), "4HR C2 Bull", group="4HR C2")
+color c2Bear4hClr   = input.color(color.new(#ff5722, 0), "4HR C2 Bear", group="4HR C2")
+
+// ─── 1HR C2 STYLE ────────────────────────────────────────────────────────────
+bool show1hC2       = input.bool(true, "Show 1HR C2", group="1HR C2")
+color c2Bull1hClr   = input.color(color.new(#00e676, 0), "1HR C2 Bull", group="1HR C2")
+color c2Bear1hClr   = input.color(color.new(#ff1744, 0), "1HR C2 Bear", group="1HR C2")
+
+// ─── SMT STYLE ────────────────────────────────────────────────────────────────
+color bullClr       = input.color(color.new(#00e676, 0), "Bull Color", group="SMT")
+color bearClr       = input.color(color.new(#ff1744, 0), "Bear Color", group="SMT")
+int smtWidth        = input.int(2, "SMT Line Width", minval=1, maxval=5, group="SMT")
+
+// ─── C3 ZONE ─────────────────────────────────────────────────────────────────
+bool showC3Zone     = input.bool(true, "Show C3 Zone", group="C3 Zone")
+color c3ZoneClr     = input.color(color.new(#ffcc00, 88), "C3 Zone Color", group="C3 Zone")
+
+// ─── PSP ──────────────────────────────────────────────────────────────────────
+bool showPSP        = input.bool(true, "Show PSP Bar Color", group="PSP")
+color pspClr        = input.color(color.new(#e040fb, 0), "PSP Color", group="PSP")
+
+// ─── SEPARATORS ───────────────────────────────────────────────────────────────
+bool showSep        = input.bool(true, "Show Separators (C3 only)", group="Separator")
+color sepClr        = input.color(color.new(#ffffff, 80), "Sep Color", group="Separator")
+
+
+// ─── TABLE ────────────────────────────────────────────────────────────────────
+bool showTable      = input.bool(true, "Show Table", group="Table")
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+lineStyle(string s) =>
+    s == "Dashed" ? line.style_dashed : s == "Dotted" ? line.style_dotted : line.style_solid
+
+// ─── TIMEFRAME DETECTION ──────────────────────────────────────────────────────
+bool is15m = timeframe.period == "15"
+bool is1H  = timeframe.period == "60"
+bool is4H  = timeframe.period == "240"
+
+// ─── DATA ─────────────────────────────────────────────────────────────────────
+[aH15, aL15, aO15, aC15] = request.security(symA, "15", [high, low, open, close])
+[bH15, bL15, bO15, bC15] = request.security(symB, "15", [high, low, open, close])
+[aH60, aL60, aO60, aC60] = request.security(symA, "60", [high, low, open, close])
+[bH60, bL60, bO60, bC60] = request.security(symB, "60", [high, low, open, close])
+[hr1PrevH, hr1PrevL, hr1PrevC] = request.security(syminfo.tickerid, "60", [high[1], low[1], close[1]])
+[hr4PrevH, hr4PrevL, hr4PrevC] = request.security(syminfo.tickerid, "240", [high[1], low[1], close[1]])
+
+// ─── TIME ─────────────────────────────────────────────────────────────────────
+int hr = hour(time, "America/New_York")
+int prevHr = hour(time[1], "America/New_York")
+bool newHour = (hr != prevHr) or session.isfirstbar
+int sinceOpen = (hr - 0 + 24) % 24
+bool new4hBlock = (sinceOpen % 4 == 0) and newHour
+bool inSession = hr >= 0 and hr < 16
+bool dailyReset = (hr == 0 and prevHr != 0) or session.isfirstbar
+
+// ─── DISPLAY FILTER ───────────────────────────────────────────────────────────
+int barsPerDay = is15m ? 96 : is1H ? 24 : is4H ? 6 : 96
+int displayBars = displayDays * barsPerDay
+bool inDisplay = bar_index >= (last_bar_index - displayBars)
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── LEVEL 1: 4HR C1/C2/C3 ───────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+var int seq4h = 0
+var float c1H4h = na, var float c1L4h = na, var int c1B4h = na
+var bool inC3_4h = false
+
+if (is15m or is1H or is4H) and dailyReset
+    seq4h := 0, c1H4h := na, c1L4h := na, c1B4h := na, inC3_4h := false
+
+bool c2Bull4h = false, bool c2Bear4h = false
+
+if (is15m or is1H or is4H) and new4hBlock and inSession and not dailyReset
+    if seq4h == 0
+        c1H4h := hr4PrevH, c1L4h := hr4PrevL
+        c1B4h := bar_index - (is15m ? 16 : is1H ? 4 : 1)
+        seq4h := 1
+    else if seq4h == 1
+        if not na(c1L4h) and hr4PrevL < c1L4h and hr4PrevC > c1L4h
+            seq4h := 2, inC3_4h := true, c2Bull4h := true
+        else if not na(c1H4h) and hr4PrevH > c1H4h and hr4PrevC < c1H4h
+            seq4h := 2, inC3_4h := true, c2Bear4h := true
+        else
+            c1H4h := hr4PrevH, c1L4h := hr4PrevL
+            c1B4h := bar_index - (is15m ? 16 : is1H ? 4 : 1)
+    else if seq4h == 2
+        inC3_4h := false
+        c1H4h := hr4PrevH, c1L4h := hr4PrevL
+        c1B4h := bar_index - (is15m ? 16 : is1H ? 4 : 1)
+        seq4h := 1
+
+if (is15m or is1H or is4H) and not inSession
+    inC3_4h := false
+
+// ─── DRAW 4HR C2 (triangle marker + dashed level) ────────────────────────────
+if (is15m or is1H or is4H) and c2Bull4h and show4hC2 and inDisplay
+    label.new(bar_index, low, "▲", style=label.style_none, textcolor=c2Bull4hClr, size=size.large, xloc=xloc.bar_index)
+    line.new(c1B4h, c1L4h, bar_index, c1L4h, color=color.new(c2Bull4hClr, 50), width=1, style=line.style_dashed)
+
+if (is15m or is1H or is4H) and c2Bear4h and show4hC2 and inDisplay
+    label.new(bar_index, high, "▼", style=label.style_none, textcolor=c2Bear4hClr, size=size.large, xloc=xloc.bar_index)
+    line.new(c1B4h, c1H4h, bar_index, c1H4h, color=color.new(c2Bear4hClr, 50), width=1, style=line.style_dashed)
+
+
+// ─── 4HR C3: 1HR QUARTER SMT ──────────────────────────────────────────────────
+var int q4h = 0
+var float q1aH4 = na, var float q1aL4 = na, var int q1b4 = na
+var float q2aH4 = na, var float q2aL4 = na, var int q2b4 = na
+var float q3aH4 = na, var float q3aL4 = na, var int q3b4 = na
+var float q1bH4 = na, var float q1bL4 = na
+var float q2bH4 = na, var float q2bL4 = na
+var float q3bH4 = na, var float q3bL4 = na
+
+if (is1H or is15m) and new4hBlock and inC3_4h and seq4h == 2
+    q4h := 0
+    q1aH4 := na, q1aL4 := na, q1b4 := na
+    q2aH4 := na, q2aL4 := na, q2b4 := na
+    q3aH4 := na, q3aL4 := na, q3b4 := na
+    q1bH4 := na, q1bL4 := na
+    q2bH4 := na, q2bL4 := na
+    q3bH4 := na, q3bL4 := na
+
+if (is1H or is15m) and newHour and inC3_4h and not new4hBlock
+    q4h := math.min(q4h + 1, 3)
+
+if (is1H or is15m) and newHour and inC3_4h
+    if q4h == 0
+        q1aH4 := aH60, q1aL4 := aL60, q1b4 := bar_index
+        q1bH4 := bH60, q1bL4 := bL60
+    else if q4h == 1
+        q2aH4 := aH60, q2aL4 := aL60, q2b4 := bar_index
+        q2bH4 := bH60, q2bL4 := bL60
+    else if q4h == 2
+        q3aH4 := aH60, q3aL4 := aL60, q3b4 := bar_index
+        q3bH4 := bH60, q3bL4 := bL60
+
+// 4HR SMT detection
+bool bear4h = false, bool bull4h = false
+int pH4 = na, int pL4 = na, float pHA4 = na, float pLA4 = na
+
+if (is1H or is15m) and inC3_4h and q4h >= 1 and newHour
+    if q4h == 1 and not na(q1aH4)
+        pHA4 := q1aH4, pLA4 := q1aL4, pH4 := q1b4, pL4 := q1b4
+        float phb = q1bH4, float plb = q1bL4
+        if (aH60 > pHA4 and not (bH60 > phb)) or (bH60 > phb and not (aH60 > pHA4))
+            bear4h := true
+        if (aL60 < pLA4 and not (bL60 < plb)) or (bL60 < plb and not (aL60 < pLA4))
+            bull4h := true
+    else if q4h == 2 and not na(q1aH4) and not na(q2aH4)
+        pHA4 := math.max(q1aH4, q2aH4), pLA4 := math.min(q1aL4, q2aL4)
+        pH4 := q1aH4 >= q2aH4 ? q1b4 : q2b4
+        pL4 := q1aL4 <= q2aL4 ? q1b4 : q2b4
+        float phb = math.max(q1bH4, q2bH4), float plb = math.min(q1bL4, q2bL4)
+        if (aH60 > pHA4 and not (bH60 > phb)) or (bH60 > phb and not (aH60 > pHA4))
+            bear4h := true
+        if (aL60 < pLA4 and not (bL60 < plb)) or (bL60 < plb and not (aL60 < pLA4))
+            bull4h := true
+    else if q4h == 3 and not na(q1aH4) and not na(q2aH4) and not na(q3aH4)
+        pHA4 := math.max(q1aH4, math.max(q2aH4, q3aH4))
+        pLA4 := math.min(q1aL4, math.min(q2aL4, q3aL4))
+        pH4 := q1aH4 >= q2aH4 and q1aH4 >= q3aH4 ? q1b4 : q2aH4 >= q3aH4 ? q2b4 : q3b4
+        pL4 := q1aL4 <= q2aL4 and q1aL4 <= q3aL4 ? q1b4 : q2aL4 <= q3aL4 ? q2b4 : q3b4
+        float phb = math.max(q1bH4, math.max(q2bH4, q3bH4))
+        float plb = math.min(q1bL4, math.min(q2bL4, q3bL4))
+        if (aH60 > pHA4 and not (bH60 > phb)) or (bH60 > phb and not (aH60 > pHA4))
+            bear4h := true
+        if (aL60 < pLA4 and not (bL60 < plb)) or (bL60 < plb and not (aL60 < pLA4))
+            bull4h := true
+
+
+// Draw 4HR SMT (thick line + dot)
+if (is1H or is15m) and bear4h and not na(pH4) and inDisplay
+    line.new(pH4, pHA4, bar_index, aH60, color=bearClr, width=smtWidth + 1, style=line.style_solid)
+    label.new(bar_index, aH60, "●", style=label.style_none, textcolor=bearClr, size=size.normal, xloc=xloc.bar_index)
+
+if (is1H or is15m) and bull4h and not na(pL4) and inDisplay
+    line.new(pL4, pLA4, bar_index, aL60, color=bullClr, width=smtWidth + 1, style=line.style_solid)
+    label.new(bar_index, aL60, "●", style=label.style_none, textcolor=bullClr, size=size.normal, xloc=xloc.bar_index)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── LEVEL 2: 1HR C1/C2/C3 ───────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+var int seq1h = 0
+var float c1H1h = na, var float c1L1h = na, var int c1B1h = na
+var bool inC3_1h = false
+
+if (is15m or is1H) and dailyReset
+    seq1h := 0, c1H1h := na, c1L1h := na, c1B1h := na, inC3_1h := false
+
+bool c2Bull1h = false, bool c2Bear1h = false
+
+if (is15m or is1H) and newHour and inSession and not dailyReset
+    if seq1h == 0
+        c1H1h := hr1PrevH, c1L1h := hr1PrevL
+        c1B1h := bar_index - (is15m ? 4 : 1)
+        seq1h := 1
+    else if seq1h == 1
+        if not na(c1L1h) and hr1PrevL < c1L1h and hr1PrevC > c1L1h
+            seq1h := 2, inC3_1h := true, c2Bull1h := true
+        else if not na(c1H1h) and hr1PrevH > c1H1h and hr1PrevC < c1H1h
+            seq1h := 2, inC3_1h := true, c2Bear1h := true
+        else
+            c1H1h := hr1PrevH, c1L1h := hr1PrevL
+            c1B1h := bar_index - (is15m ? 4 : 1)
+    else if seq1h == 2
+        inC3_1h := false
+        c1H1h := hr1PrevH, c1L1h := hr1PrevL
+        c1B1h := bar_index - (is15m ? 4 : 1)
+        seq1h := 1
+
+if (is15m or is1H) and not inSession
+    inC3_1h := false
+
+// ─── DRAW 1HR C2 (diamond marker + dotted level) ─────────────────────────────
+if (is15m or is1H) and c2Bull1h and show1hC2 and inDisplay
+    label.new(bar_index, low, "◆", style=label.style_none, textcolor=c2Bull1hClr, size=size.small, xloc=xloc.bar_index)
+    line.new(c1B1h, c1L1h, bar_index, c1L1h, color=color.new(c2Bull1hClr, 60), width=1, style=line.style_dotted)
+
+if (is15m or is1H) and c2Bear1h and show1hC2 and inDisplay
+    label.new(bar_index, high, "◆", style=label.style_none, textcolor=c2Bear1hClr, size=size.small, xloc=xloc.bar_index)
+    line.new(c1B1h, c1H1h, bar_index, c1H1h, color=color.new(c2Bear1hClr, 60), width=1, style=line.style_dotted)
+
+
+// ─── 1HR C3: 15M QUARTER SMT ──────────────────────────────────────────────────
+var int q1h = 0
+var float q1aH1 = na, var float q1aL1 = na, var int q1b1 = na
+var float q2aH1 = na, var float q2aL1 = na, var int q2b1 = na
+var float q3aH1 = na, var float q3aL1 = na, var int q3b1 = na
+var float q1bH1 = na, var float q1bL1 = na
+var float q2bH1 = na, var float q2bL1 = na
+var float q3bH1 = na, var float q3bL1 = na
+
+if is15m and newHour and inC3_1h and seq1h == 2
+    q1h := 0
+    q1aH1 := na, q1aL1 := na, q1b1 := na
+    q2aH1 := na, q2aL1 := na, q2b1 := na
+    q3aH1 := na, q3aL1 := na, q3b1 := na
+    q1bH1 := na, q1bL1 := na
+    q2bH1 := na, q2bL1 := na
+    q3bH1 := na, q3bL1 := na
+
+if is15m and inC3_1h
+    if q1h == 0
+        q1aH1 := aH15, q1aL1 := aL15, q1b1 := bar_index
+        q1bH1 := bH15, q1bL1 := bL15
+    else if q1h == 1
+        q2aH1 := aH15, q2aL1 := aL15, q2b1 := bar_index
+        q2bH1 := bH15, q2bL1 := bL15
+    else if q1h == 2
+        q3aH1 := aH15, q3aL1 := aL15, q3b1 := bar_index
+        q3bH1 := bH15, q3bL1 := bL15
+
+if is15m and inC3_1h and not newHour
+    q1h := math.min(q1h + 1, 3)
+
+// 1HR SMT detection (15m quarters)
+bool bear1h = false, bool bull1h = false
+int pH1 = na, int pL1 = na, float pHA1 = na, float pLA1 = na
+
+if is15m and inC3_1h and q1h >= 1
+    if q1h == 1 and not na(q1aH1)
+        pHA1 := q1aH1, pLA1 := q1aL1, pH1 := q1b1, pL1 := q1b1
+        float phb = q1bH1, float plb = q1bL1
+        if (aH15 > pHA1 and not (bH15 > phb)) or (bH15 > phb and not (aH15 > pHA1))
+            bear1h := true
+        if (aL15 < pLA1 and not (bL15 < plb)) or (bL15 < plb and not (aL15 < pLA1))
+            bull1h := true
+    else if q1h == 2 and not na(q1aH1) and not na(q2aH1)
+        pHA1 := math.max(q1aH1, q2aH1), pLA1 := math.min(q1aL1, q2aL1)
+        pH1 := q1aH1 >= q2aH1 ? q1b1 : q2b1
+        pL1 := q1aL1 <= q2aL1 ? q1b1 : q2b1
+        float phb = math.max(q1bH1, q2bH1), float plb = math.min(q1bL1, q2bL1)
+        if (aH15 > pHA1 and not (bH15 > phb)) or (bH15 > phb and not (aH15 > pHA1))
+            bear1h := true
+        if (aL15 < pLA1 and not (bL15 < plb)) or (bL15 < plb and not (aL15 < pLA1))
+            bull1h := true
+    else if q1h == 3 and not na(q1aH1) and not na(q2aH1) and not na(q3aH1)
+        pHA1 := math.max(q1aH1, math.max(q2aH1, q3aH1))
+        pLA1 := math.min(q1aL1, math.min(q2aL1, q3aL1))
+        pH1 := q1aH1 >= q2aH1 and q1aH1 >= q3aH1 ? q1b1 : q2aH1 >= q3aH1 ? q2b1 : q3b1
+        pL1 := q1aL1 <= q2aL1 and q1aL1 <= q3aL1 ? q1b1 : q2aL1 <= q3aL1 ? q2b1 : q3b1
+        float phb = math.max(q1bH1, math.max(q2bH1, q3bH1))
+        float plb = math.min(q1bL1, math.min(q2bL1, q3bL1))
+        if (aH15 > pHA1 and not (bH15 > phb)) or (bH15 > phb and not (aH15 > pHA1))
+            bear1h := true
+        if (aL15 < pLA1 and not (bL15 < plb)) or (bL15 < plb and not (aL15 < pLA1))
+            bull1h := true
+
+
+// Draw 1HR SMT (thin line + small dot)
+if is15m and bear1h and not na(pH1) and inDisplay
+    line.new(pH1, pHA1, bar_index, aH15, color=bearClr, width=smtWidth, style=line.style_solid)
+    label.new(bar_index, aH15, "•", style=label.style_none, textcolor=bearClr, size=size.small, xloc=xloc.bar_index)
+
+if is15m and bull1h and not na(pL1) and inDisplay
+    line.new(pL1, pLA1, bar_index, aL15, color=bullClr, width=smtWidth, style=line.style_solid)
+    label.new(bar_index, aL15, "•", style=label.style_none, textcolor=bullClr, size=size.small, xloc=xloc.bar_index)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── VISUALS: C3 ZONE + PSP + SEPARATORS ──────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// C3 zone background (only when active — chart "lights up")
+bool anyC3 = inC3_4h or inC3_1h
+bgcolor(anyC3 and showC3Zone and inDisplay ? c3ZoneClr : na, title="C3 Zone")
+
+// PSP — bar color only (no bgcolor noise)
+bool aBull = aC15 > aO15
+bool bBull = bC15 > bO15
+bool isPSP = is15m and anyC3 and (aBull != bBull) and inDisplay
+barcolor(isPSP and showPSP ? pspClr : na, title="PSP Bar")
+
+// Separators — ONLY inside C3 zones (silent outside)
+if is15m and newHour and anyC3 and showSep and inDisplay
+    line.new(bar_index, high, bar_index, low, extend=extend.both, color=sepClr, style=line.style_dotted, width=1)
+
+if is1H and new4hBlock and inC3_4h and showSep and inDisplay
+    line.new(bar_index, high, bar_index, low, extend=extend.both, color=sepClr, style=line.style_dotted, width=1)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── TABLE (minimal) ──────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+var int tBull4 = 0, var int tBear4 = 0
+var int tBull1 = 0, var int tBear1 = 0
+
+if bull4h and inDisplay
+    tBull4 += 1
+if bear4h and inDisplay
+    tBear4 += 1
+if bull1h and inDisplay
+    tBull1 += 1
+if bear1h and inDisplay
+    tBear1 += 1
+
+var table t = table.new(position.top_right, 3, 3, bgcolor=color.new(#000000, 80), border_width=0)
+
+if showTable and barstate.islast
+    table.cell(t, 0, 0, "", text_size=size.tiny)
+    table.cell(t, 1, 0, "▲", text_color=bullClr, text_size=size.small)
+    table.cell(t, 2, 0, "▼", text_color=bearClr, text_size=size.small)
+    table.cell(t, 0, 1, "4H", text_color=#00bcd4, text_size=size.small)
+    table.cell(t, 1, 1, str.tostring(tBull4), text_color=#ffffff, text_size=size.small)
+    table.cell(t, 2, 1, str.tostring(tBear4), text_color=#ffffff, text_size=size.small)
+    table.cell(t, 0, 2, "1H", text_color=#ffcc00, text_size=size.small)
+    table.cell(t, 1, 2, str.tostring(tBull1), text_color=#ffffff, text_size=size.small)
+    table.cell(t, 2, 2, str.tostring(tBear1), text_color=#ffffff, text_size=size.small)
+
+// ─── ALERTS ──────────────────────────────────────────────────────────────────
+alertcondition(bull4h, title="Bull SMT (4H)", message="Bull SMT 4HR C3 {{ticker}}")
+alertcondition(bear4h, title="Bear SMT (4H)", message="Bear SMT 4HR C3 {{ticker}}")
+alertcondition(bull1h, title="Bull SMT (1H)", message="Bull SMT 1HR C3 {{ticker}}")
+alertcondition(bear1h, title="Bear SMT (1H)", message="Bear SMT 1HR C3 {{ticker}}")
+alertcondition(c2Bull4h, title="4H C2 Bull", message="4HR Bullish C2 {{ticker}}")
+alertcondition(c2Bear4h, title="4H C2 Bear", message="4HR Bearish C2 {{ticker}}")
+alertcondition(c2Bull1h, title="1H C2 Bull", message="1HR Bullish C2 {{ticker}}")
+alertcondition(c2Bear1h, title="1H C2 Bear", message="1HR Bearish C2 {{ticker}}")
+alertcondition(isPSP, title="PSP", message="PSP in C3 {{ticker}}")
