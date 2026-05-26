@@ -88,6 +88,7 @@ string group_style     = "Styling"
 string group_label     = "Label Settings"
 
 int max_display_count           = input.int(5, 'HTF candles to show', minval = 1, maxval = 20, group = group_main)
+bool   auto_size                = input.bool(true, 'Auto-size to chart (scales width/spacing on resize/zoom)', group = group_main)
 
 settings.use_custom_daily       := input.bool(false, 'Custom daily candle open     ', inline = 'customdaily', group = group_main)
 settings.custom_daily           := input.string('Midnight', '', options = ['Midnight', '8:30', '9:30'], inline = 'customdaily', group = group_main)
@@ -153,6 +154,18 @@ htf1.settings.show          := valid_auto_htf
 htf1.settings.htf           := valid_auto_htf ? auto_htf_tf : '15'
 htf1.settings.max_display   := max_display_count
 settings.max_sets           := 1
+
+// Auto-size: scale offset/buffer/width to chart's visible bar range so candles fit
+// nicely whether you zoom in close or zoom out far.
+if auto_size and (barstate.isrealtime or barstate.islast)
+    int secPerBar = timeframe.in_seconds()
+    if secPerBar > 0 and not na(chart.right_visible_bar_time) and not na(chart.left_visible_bar_time)
+        float visibleBars = math.abs(chart.right_visible_bar_time - chart.left_visible_bar_time) / 1000.0 / secPerBar
+        if visibleBars > 10
+            settings.offset := math.max(2,  int(math.round(visibleBars * 0.04)))
+            settings.buffer := math.max(1,  math.min(4, int(math.round(visibleBars * 0.005))))
+            int autoW       = math.max(1,  math.min(8, int(math.round(visibleBars * 0.015))))
+            settings.width  := autoW * 2
 
 // Warning when chart TF is not supported
 var label warn_lbl = na
