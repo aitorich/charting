@@ -12,7 +12,7 @@
 //   4H  -> 1W
 
 //@version=6
-indicator('Astrophile HTF Candle', overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500, max_bars_back = 5000)
+indicator('Astrophile HTF Candle', overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500, max_bars_back = 5000, calc_on_every_tick = true)
 
 type Candle
 	float o
@@ -365,8 +365,8 @@ method Update(CandleSet candleSet, int offset) =>
 
         bull = candle.c > candle.o
 
-        box.set_top(candle.body, candle.o)
-        box.set_bottom(candle.body, candle.c)
+        box.set_top(candle.body, math.max(candle.o, candle.c))
+        box.set_bottom(candle.body, math.min(candle.o, candle.c))
         box.set_bgcolor(candle.body, bull ? settings.bull_body : settings.bear_body)
         box.set_border_color(candle.body, bull ? settings.bull_border : settings.bear_border)
         line.set_color(candle.wick_up, bull ? settings.bull_wick : settings.bear_wick)
