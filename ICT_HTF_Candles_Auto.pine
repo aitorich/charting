@@ -1,6 +1,6 @@
 // This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
 // Original ICT HTF Candles by fadizeidan
-// Modified: single auto-selected HTF based on chart TF + HTF Opening Line on LTF chart
+// Modified: single auto-selected HTF based on chart TF + LIVE HTF OHLC lines on LTF chart
 //
 // Auto LTF -> HTF mapping:
 //   1m  -> 15m
@@ -13,7 +13,7 @@
 // Other chart TFs are not supported and a warning label is shown.
 
 //@version=6
-indicator('ICT HTF Candles Auto (single HTF + Open Line)', overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500, max_bars_back = 5000)
+indicator('ICT HTF Candles Auto (Live OHLC)', overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500, max_bars_back = 5000)
 
 // =====================================================================
 // Types
@@ -35,6 +35,12 @@ type Candle
     label dow_label
     line  open_line
     label open_label
+    line  high_line
+    label high_label
+    line  low_line
+    label low_label
+    line  close_line
+    label close_label
 
 type Trace
     line o
@@ -53,24 +59,31 @@ type Imbalance
 // =====================================================================
 // Inputs
 // =====================================================================
-string g_main      = "Main  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-string g_oline     = "HTF Opening Line  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-string g_style     = "Styling  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-string g_label     = "Label Settings  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-string g_imb       = "Imbalance  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-string g_trace     = "Trace  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+string g_main      = "Main  ----------------------------------"
+string g_oline     = "HTF Live Lines (OHLC)  ----------------------------------"
+string g_style     = "Styling  ----------------------------------"
+string g_label     = "Label Settings  ----------------------------------"
+string g_imb       = "Imbalance  ----------------------------------"
+string g_trace     = "Trace  ----------------------------------"
 
 int    in_max_display    = input.int(5, 'HTF candles to show', minval = 1, maxval = 20, group = g_main)
 bool   in_use_cust_daily = input.bool(false, 'Custom daily candle open', inline = 'cd', group = g_main)
 string in_cust_daily     = input.string('Midnight', '', options = ['Midnight', '8:30', '9:30'], inline = 'cd', group = g_main)
 
-// HTF opening line (drawn on the LTF chart)
-bool   in_ol_show     = input.bool(true, 'Show HTF Opening Line', group = g_oline)
-color  in_ol_color    = input.color(color.new(color.blue, 0), 'Color  ', inline = 'ol', group = g_oline)
-string in_ol_style    = input.string('⎯⎯⎯', '', options = ['⎯⎯⎯', '----', '····'], inline = 'ol', group = g_oline)
-int    in_ol_width    = input.int(1, '', options = [1, 2, 3, 4], inline = 'ol', group = g_oline)
-bool   in_ol_history  = input.bool(false, 'Keep historical HTF opens (one per past HTF candle)', group = g_oline)
-bool   in_ol_label    = input.bool(true, 'Show price label', group = g_oline)
+// HTF live OHLC lines (drawn on the LTF chart at exact HTF prices, live updating)
+bool   in_ol_show     = input.bool(true,  'Open  ', inline = 'lo', group = g_oline)
+color  in_ol_color    = input.color(color.new(color.blue, 0),   '', inline = 'lo', group = g_oline)
+bool   in_hl_show     = input.bool(true,  'High  ', inline = 'lh', group = g_oline)
+color  in_hl_color    = input.color(color.new(color.green, 0),  '', inline = 'lh', group = g_oline)
+bool   in_ll_show     = input.bool(true,  'Low   ', inline = 'll', group = g_oline)
+color  in_ll_color    = input.color(color.new(color.red, 0),    '', inline = 'll', group = g_oline)
+bool   in_cl_show     = input.bool(false, 'Close ', inline = 'lc', group = g_oline)
+color  in_cl_color    = input.color(color.new(color.gray, 0),   '', inline = 'lc', group = g_oline)
+
+string in_ol_style    = input.string('---', 'Style ', options = ['---', '- - -', '. . .'], inline = 'ls', group = g_oline)
+int    in_ol_width    = input.int(1, '', options = [1, 2, 3, 4], inline = 'ls', group = g_oline)
+bool   in_ol_history  = input.bool(false, 'Keep lines from past HTF candles', group = g_oline)
+bool   in_ol_label    = input.bool(true,  'Show price labels', group = g_oline)
 
 // Styling (kept from original)
 color  in_bull_body    = input.color(color.new(color.green, 10), 'Body  ',    inline = 'body',    group = g_style)
@@ -88,10 +101,8 @@ bool   in_lbl_show     = input.bool(true, 'HTF Label           ', group = g_labe
 color  in_lbl_color    = input.color(color.new(color.black, 10), '', group = g_label, inline = 'HTFlabel')
 string in_lbl_size     = input.string(size.large, '', [size.tiny, size.small, size.normal, size.large, size.huge], group = g_label, inline = 'HTFlabel')
 string in_lbl_pos      = input.string("Both", 'Label Positions',  options = ['Both', 'Top', 'Bottom'], group = g_label)
-string in_lbl_align    = input.string("Align", "Label Alignment", options = ['Align', 'Follow Candles'], group = g_label)
 bool   in_tmr_show     = input.bool(true, 'Remaining time      ', inline = 'timer', group = g_label)
 color  in_tmr_color    = input.color(color.new(color.black, 10), '', inline = 'timer', group = g_label)
-string in_tmr_size     = input.string(size.normal, '', [size.tiny, size.small, size.normal, size.large, size.huge], group = g_label, inline = 'timer')
 bool   in_dow_show     = input.bool(false, 'Interval Value        ', group = g_label, inline = 'dow')
 color  in_dow_color    = input.color(color.black,                  '', group = g_label, inline = 'dow')
 string in_dow_size     = input.string(size.small, '', [size.tiny, size.small, size.normal, size.large, size.huge], group = g_label, inline = 'dow')
@@ -105,20 +116,9 @@ color  in_vi_color     = input.color(color.new(color.red, 50), '', inline = 'vi'
 // Trace (kept from original)
 bool   in_tr_show      = input.bool(false, 'Trace lines', group = g_trace)
 color  in_tr_o_color   = input.color(color.new(color.gray, 50), 'Open    ', inline = '1', group = g_trace)
-string in_tr_o_style   = input.string('····', '', options = ['⎯⎯⎯', '----', '····'], inline = '1', group = g_trace)
-int    in_tr_o_size    = input.int(1, '', options = [1, 2, 3, 4], inline = '1', group = g_trace)
 color  in_tr_c_color   = input.color(color.new(color.gray, 50), 'Close    ', inline = '2', group = g_trace)
-string in_tr_c_style   = input.string('····', '', options = ['⎯⎯⎯', '----', '····'], inline = '2', group = g_trace)
-int    in_tr_c_size    = input.int(1, '', options = [1, 2, 3, 4], inline = '2', group = g_trace)
 color  in_tr_h_color   = input.color(color.new(color.gray, 50), 'High     ', inline = '3', group = g_trace)
-string in_tr_h_style   = input.string('····', '', options = ['⎯⎯⎯', '----', '····'], inline = '3', group = g_trace)
-int    in_tr_h_size    = input.int(1, '', options = [1, 2, 3, 4], inline = '3', group = g_trace)
 color  in_tr_l_color   = input.color(color.new(color.gray, 50), 'Low     ', inline = '4', group = g_trace)
-string in_tr_l_style   = input.string('····', '', options = ['⎯⎯⎯', '----', '····'], inline = '4', group = g_trace)
-int    in_tr_l_size    = input.int(1, '', options = [1, 2, 3, 4], inline = '4', group = g_trace)
-bool   in_pl_show      = input.bool(false, 'Price Label           ', inline = 'plabel')
-color  in_pl_color     = input.color(color.new(color.black, 10), '', inline = 'plabel')
-string in_pl_size      = input.string(size.small, '', [size.tiny, size.small, size.normal, size.large, size.huge], inline = 'plabel')
 
 color color_transparent = #ffffff00
 
@@ -169,17 +169,14 @@ var array<Candle>    candles    = array.new<Candle>(0)
 var array<Imbalance> imbalances = array.new<Imbalance>()
 var label tfNameTop      = na
 var label tfNameBottom   = na
-var label tfTimerTop     = na
-var label tfTimerBottom  = na
-var Trace trace          = Trace.new()
 
 // =====================================================================
 // Helpers
 // =====================================================================
 f_lineStyle(string s) =>
     out = switch s
-        '----' => line.style_dashed
-        '····' => line.style_dotted
+        '- - -' => line.style_dashed
+        '. . .' => line.style_dotted
         =>        line.style_solid
     out
 
@@ -258,14 +255,22 @@ if valid_tf
         if in_cust_daily == '9:30'
             isNewHTF := not na(time(timeframe.period, "0930-0931:123456", 'America/New_York')) and na(time(timeframe.period, "0930-0931:123456", 'America/New_York')[1])
 
-    // ---- on new HTF candle: close opening line of previous candle, push new candle ----
+    // ---- on new HTF candle: close previous candle's live lines, push new candle ----
     if isNewHTF
-        // close previous opening line at current bar (so it stops at the boundary)
         if candles.size() > 0
             Candle prev = candles.first()
             if not na(prev.open_line)
                 line.set_extend(prev.open_line, extend.none)
                 line.set_x2(prev.open_line, bar_index - 1)
+            if not na(prev.high_line)
+                line.set_extend(prev.high_line, extend.none)
+                line.set_x2(prev.high_line, bar_index - 1)
+            if not na(prev.low_line)
+                line.set_extend(prev.low_line, extend.none)
+                line.set_x2(prev.low_line, bar_index - 1)
+            if not na(prev.close_line)
+                line.set_extend(prev.close_line, extend.none)
+                line.set_x2(prev.close_line, bar_index - 1)
 
         Candle nc = Candle.new()
         nc.o      := open
@@ -302,6 +307,18 @@ if valid_tf
                 line.delete(del.open_line)
             if not na(del.open_label)
                 label.delete(del.open_label)
+            if not na(del.high_line)
+                line.delete(del.high_line)
+            if not na(del.high_label)
+                label.delete(del.high_label)
+            if not na(del.low_line)
+                line.delete(del.low_line)
+            if not na(del.low_label)
+                label.delete(del.low_label)
+            if not na(del.close_line)
+                line.delete(del.close_line)
+            if not na(del.close_label)
+                label.delete(del.close_label)
 
     // ---- update current (live) HTF candle ----
     if candles.size() > 0
@@ -325,25 +342,19 @@ if valid_tf
         line.set_y1(cur.wick_down, cur.l)
         line.set_y2(cur.wick_down, math.min(cur.o, cur.c))
 
-    // ---- HTF opening line(s) on the LTF chart ----
-    // Drawn at the *price level* of the LTF chart, anchored at the bar where
-    // each HTF candle opened.
-    if in_ol_show and candles.size() > 0 and (barstate.isrealtime or barstate.islast)
+    // ---- HTF live OHLC lines on the LTF chart ----
+    // Drawn at exact price levels of the LTF chart, anchored at the bar where
+    // each HTF candle opened, updating live every bar.
+    if (in_ol_show or in_hl_show or in_ll_show or in_cl_show) and candles.size() > 0 and (barstate.isrealtime or barstate.islast)
         for i = 0 to candles.size() - 1
             Candle c = candles.get(i)
             bool isCurrent = (i == 0)
+            bool draw = isCurrent or in_ol_history
+            int x1 = c.o_idx
+            int x2 = isCurrent ? bar_index : (i > 0 ? candles.get(i - 1).o_idx - 1 : bar_index)
 
-            // skip historical opens unless user asked for them
-            if not isCurrent and not in_ol_history
-                if not na(c.open_line)
-                    line.delete(c.open_line)
-                    c.open_line := na
-                if not na(c.open_label)
-                    label.delete(c.open_label)
-                    c.open_label := na
-            else
-                int x1 = c.o_idx
-                int x2 = isCurrent ? bar_index : (i > 0 ? candles.get(i - 1).o_idx - 1 : bar_index)
+            // === OPEN ===
+            if draw and in_ol_show
                 if na(c.open_line)
                     c.open_line := line.new(x1, c.o, x2, c.o, xloc = xloc.bar_index, color = in_ol_color, style = f_lineStyle(in_ol_style), width = in_ol_width, extend = isCurrent ? extend.right : extend.none)
                 else
@@ -353,17 +364,114 @@ if valid_tf
                     line.set_style(c.open_line, f_lineStyle(in_ol_style))
                     line.set_width(c.open_line, in_ol_width)
                     line.set_extend(c.open_line, isCurrent ? extend.right : extend.none)
-
                 if in_ol_label
-                    string txt = str.tostring(c.o)
+                    string txt = 'O ' + str.tostring(c.o)
                     if na(c.open_label)
                         c.open_label := label.new(x2, c.o, txt, xloc = xloc.bar_index, style = label.style_label_left, color = color_transparent, textcolor = in_ol_color, size = size.small)
                     else
                         label.set_xy(c.open_label, x2, c.o)
                         label.set_text(c.open_label, txt)
+                        label.set_textcolor(c.open_label, in_ol_color)
                 else if not na(c.open_label)
                     label.delete(c.open_label)
                     c.open_label := na
+            else
+                if not na(c.open_line)
+                    line.delete(c.open_line)
+                    c.open_line := na
+                if not na(c.open_label)
+                    label.delete(c.open_label)
+                    c.open_label := na
+
+            // === HIGH ===
+            if draw and in_hl_show
+                if na(c.high_line)
+                    c.high_line := line.new(x1, c.h, x2, c.h, xloc = xloc.bar_index, color = in_hl_color, style = f_lineStyle(in_ol_style), width = in_ol_width, extend = isCurrent ? extend.right : extend.none)
+                else
+                    line.set_xy1(c.high_line, x1, c.h)
+                    line.set_xy2(c.high_line, x2, c.h)
+                    line.set_color(c.high_line, in_hl_color)
+                    line.set_style(c.high_line, f_lineStyle(in_ol_style))
+                    line.set_width(c.high_line, in_ol_width)
+                    line.set_extend(c.high_line, isCurrent ? extend.right : extend.none)
+                if in_ol_label
+                    string txt = 'H ' + str.tostring(c.h)
+                    if na(c.high_label)
+                        c.high_label := label.new(x2, c.h, txt, xloc = xloc.bar_index, style = label.style_label_left, color = color_transparent, textcolor = in_hl_color, size = size.small)
+                    else
+                        label.set_xy(c.high_label, x2, c.h)
+                        label.set_text(c.high_label, txt)
+                        label.set_textcolor(c.high_label, in_hl_color)
+                else if not na(c.high_label)
+                    label.delete(c.high_label)
+                    c.high_label := na
+            else
+                if not na(c.high_line)
+                    line.delete(c.high_line)
+                    c.high_line := na
+                if not na(c.high_label)
+                    label.delete(c.high_label)
+                    c.high_label := na
+
+            // === LOW ===
+            if draw and in_ll_show
+                if na(c.low_line)
+                    c.low_line := line.new(x1, c.l, x2, c.l, xloc = xloc.bar_index, color = in_ll_color, style = f_lineStyle(in_ol_style), width = in_ol_width, extend = isCurrent ? extend.right : extend.none)
+                else
+                    line.set_xy1(c.low_line, x1, c.l)
+                    line.set_xy2(c.low_line, x2, c.l)
+                    line.set_color(c.low_line, in_ll_color)
+                    line.set_style(c.low_line, f_lineStyle(in_ol_style))
+                    line.set_width(c.low_line, in_ol_width)
+                    line.set_extend(c.low_line, isCurrent ? extend.right : extend.none)
+                if in_ol_label
+                    string txt = 'L ' + str.tostring(c.l)
+                    if na(c.low_label)
+                        c.low_label := label.new(x2, c.l, txt, xloc = xloc.bar_index, style = label.style_label_left, color = color_transparent, textcolor = in_ll_color, size = size.small)
+                    else
+                        label.set_xy(c.low_label, x2, c.l)
+                        label.set_text(c.low_label, txt)
+                        label.set_textcolor(c.low_label, in_ll_color)
+                else if not na(c.low_label)
+                    label.delete(c.low_label)
+                    c.low_label := na
+            else
+                if not na(c.low_line)
+                    line.delete(c.low_line)
+                    c.low_line := na
+                if not na(c.low_label)
+                    label.delete(c.low_label)
+                    c.low_label := na
+
+            // === CLOSE ===
+            if draw and in_cl_show
+                if na(c.close_line)
+                    c.close_line := line.new(x1, c.c, x2, c.c, xloc = xloc.bar_index, color = in_cl_color, style = f_lineStyle(in_ol_style), width = in_ol_width, extend = isCurrent ? extend.right : extend.none)
+                else
+                    line.set_xy1(c.close_line, x1, c.c)
+                    line.set_xy2(c.close_line, x2, c.c)
+                    line.set_color(c.close_line, in_cl_color)
+                    line.set_style(c.close_line, f_lineStyle(in_ol_style))
+                    line.set_width(c.close_line, in_ol_width)
+                    line.set_extend(c.close_line, isCurrent ? extend.right : extend.none)
+                if in_ol_label
+                    string txt = 'C ' + str.tostring(c.c)
+                    if na(c.close_label)
+                        c.close_label := label.new(x2, c.c, txt, xloc = xloc.bar_index, style = label.style_label_left, color = color_transparent, textcolor = in_cl_color, size = size.small)
+                    else
+                        label.set_xy(c.close_label, x2, c.c)
+                        label.set_text(c.close_label, txt)
+                        label.set_textcolor(c.close_label, in_cl_color)
+                else if not na(c.close_label)
+                    label.delete(c.close_label)
+                    c.close_label := na
+            else
+                if not na(c.close_line)
+                    line.delete(c.close_line)
+                    c.close_line := na
+                if not na(c.close_label)
+                    label.delete(c.close_label)
+                    c.close_label := na
 
     // ---- inline HTF candle rendering (right of price) ----
     if (barstate.isrealtime or barstate.islast) and candles.size() > 0
@@ -385,7 +493,7 @@ if valid_tf
                 else
                     c.dow_label := label.new(bar_index + in_width / 2 + t_buf, c.h, c.dow, color = color_transparent, textcolor = in_dow_color, style = label.style_label_down, size = in_dow_size)
 
-        // labels
+        // labels (HTF name + optional inline timer)
         float top    = f_setHigh(candles)
         float bottom = f_setLow(candles, top)
         int   left   = bar_index + in_offset + (in_width + in_buffer) * (sz - 1) / 2
@@ -408,7 +516,7 @@ if valid_tf
                 else
                     tfNameBottom := label.new(left, bottom, lblt, color = color_transparent, textcolor = in_lbl_color, style = label.style_label_up, size = in_lbl_size)
 
-        // imbalances (FVG + VI) — recomputed each tick like original
+        // imbalances (FVG + VI) - recomputed each tick like original
         if imbalances.size() > 0
             for i = imbalances.size() - 1 to 0
                 Imbalance del = imbalances.get(i)
@@ -444,55 +552,3 @@ if valid_tf
                     Imbalance imb = Imbalance.new()
                     imb.b := box.new(box.get_right(c1.body), math.min(c2.o, c2.c), box.get_left(c2.body), math.max(c1.o, c1.c), bgcolor = in_vi_color, border_color = color_transparent)
                     imbalances.push(imb)
-
-        // trace lines (kept from original)
-        if in_tr_show and candles.size() > 0
-            Candle cur = candles.first()
-            if bar_index - cur.o_idx < 5000
-                if na(trace.o)
-                    trace.o := line.new(cur.o_idx, cur.o, box.get_left(cur.body), cur.o, xloc = xloc.bar_index, color = in_tr_o_color, style = f_lineStyle(in_tr_o_style), width = in_tr_o_size)
-                else
-                    line.set_xy1(trace.o, cur.o_idx, cur.o)
-                    line.set_xy2(trace.o, box.get_left(cur.body), cur.o)
-                if in_pl_show
-                    if na(trace.o_l)
-                        trace.o_l := label.new(box.get_right(cur.body), cur.o, str.tostring(cur.o), textalign = text.align_center, style = label.style_label_left, size = in_pl_size, color = color_transparent, textcolor = in_pl_color)
-                    else
-                        label.set_xy(trace.o_l, box.get_right(cur.body), cur.o)
-                        label.set_text(trace.o_l, str.tostring(cur.o))
-            if bar_index - cur.c_idx < 5000
-                if na(trace.c)
-                    trace.c := line.new(cur.c_idx, cur.c, box.get_left(cur.body), cur.c, xloc = xloc.bar_index, color = in_tr_c_color, style = f_lineStyle(in_tr_c_style), width = in_tr_c_size)
-                else
-                    line.set_xy1(trace.c, cur.c_idx, cur.c)
-                    line.set_xy2(trace.c, box.get_left(cur.body), cur.c)
-                if in_pl_show
-                    if na(trace.c_l)
-                        trace.c_l := label.new(box.get_right(cur.body), cur.c, str.tostring(cur.c), textalign = text.align_center, style = label.style_label_left, size = in_pl_size, color = color_transparent, textcolor = in_pl_color)
-                    else
-                        label.set_xy(trace.c_l, box.get_right(cur.body), cur.c)
-                        label.set_text(trace.c_l, str.tostring(cur.c))
-            if bar_index - cur.h_idx < 5000
-                if na(trace.h)
-                    trace.h := line.new(cur.h_idx, cur.h, line.get_x1(cur.wick_up), cur.h, xloc = xloc.bar_index, color = in_tr_h_color, style = f_lineStyle(in_tr_h_style), width = in_tr_h_size)
-                else
-                    line.set_xy1(trace.h, cur.h_idx, cur.h)
-                    line.set_xy2(trace.h, line.get_x1(cur.wick_up), cur.h)
-                if in_pl_show
-                    if na(trace.h_l)
-                        trace.h_l := label.new(box.get_right(cur.body), cur.h, str.tostring(cur.h), textalign = text.align_center, style = label.style_label_left, size = in_pl_size, color = color_transparent, textcolor = in_pl_color)
-                    else
-                        label.set_xy(trace.h_l, box.get_right(cur.body), cur.h)
-                        label.set_text(trace.h_l, str.tostring(cur.h))
-            if bar_index - cur.l_idx < 5000
-                if na(trace.l)
-                    trace.l := line.new(cur.l_idx, cur.l, line.get_x1(cur.wick_down), cur.l, xloc = xloc.bar_index, color = in_tr_l_color, style = f_lineStyle(in_tr_l_style), width = in_tr_l_size)
-                else
-                    line.set_xy1(trace.l, cur.l_idx, cur.l)
-                    line.set_xy2(trace.l, line.get_x1(cur.wick_down), cur.l)
-                if in_pl_show
-                    if na(trace.l_l)
-                        trace.l_l := label.new(box.get_right(cur.body), cur.l, str.tostring(cur.l), textalign = text.align_center, style = label.style_label_left, size = in_pl_size, color = color_transparent, textcolor = in_pl_color)
-                    else
-                        label.set_xy(trace.l_l, box.get_right(cur.body), cur.l)
-                        label.set_text(trace.l_l, str.tostring(cur.l))
