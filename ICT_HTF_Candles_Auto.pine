@@ -12,7 +12,7 @@
 //   4H  -> 1W
 
 //@version=6
-indicator('Astrophile HTF Candle', overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500, max_bars_back = 5000, calc_on_every_tick = true)
+indicator('Astrophile HTF Candle', overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500, max_bars_back = 5000)
 
 type Candle
 	float o
