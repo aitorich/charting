@@ -160,8 +160,7 @@ if barstate.islast
         label.delete(warn)
         warn := na
     if not valid_tf
-        string warn_msg = "ICT HTF Candles Auto:" + "\n" + "Unsupported chart TF." + "\n" + "Use 1m, 3m, 5m, 15m, 30m, 1H or 4H."
-        warn := label.new(bar_index, high, warn_msg, style = label.style_label_down, color = color.new(color.red, 0), textcolor = color.white, size = size.normal)
+        warn := label.new(bar_index, high, "Unsupported chart TF: use 1m, 3m, 5m, 15m, 30m, 1H or 4H", style = label.style_label_down, color = color.new(color.red, 0), textcolor = color.white, size = size.normal)
 
 // =====================================================================
 // State
