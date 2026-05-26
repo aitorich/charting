@@ -392,13 +392,8 @@ if valid_tf
 
         if in_lbl_show
             string lblt = f_htfName(htf)
-            string lbll = lblt
             if in_tmr_show
-                lblt := lblt + '\n'
-                lbll := '\n' + lbll
-            if in_dow_show
-                lblt := lblt + '\n'
-            string tmr = '(' + f_remaining(htf) + ')' + (in_dow_show ? '\n' : '')
+                lblt := lblt + ' (' + f_remaining(htf) + ')'
 
             if in_lbl_pos == 'Both' or in_lbl_pos == 'Top'
                 if not na(tfNameTop)
@@ -406,24 +401,12 @@ if valid_tf
                     tfNameTop.set_text(lblt)
                 else
                     tfNameTop := label.new(left, top, lblt, color = color_transparent, textcolor = in_lbl_color, style = label.style_label_down, size = in_lbl_size)
-                if in_tmr_show
-                    if not na(tfTimerTop)
-                        tfTimerTop.set_xy(left, top)
-                        tfTimerTop.set_text(tmr)
-                    else
-                        tfTimerTop := label.new(left, top, tmr, color = color_transparent, textcolor = in_tmr_color, style = label.style_label_down, size = in_tmr_size)
             if in_lbl_pos == 'Both' or in_lbl_pos == 'Bottom'
                 if not na(tfNameBottom)
                     tfNameBottom.set_xy(left, bottom)
-                    tfNameBottom.set_text(lbll)
+                    tfNameBottom.set_text(lblt)
                 else
-                    tfNameBottom := label.new(left, bottom, lbll, color = color_transparent, textcolor = in_lbl_color, style = label.style_label_up, size = in_lbl_size)
-                if in_tmr_show
-                    if not na(tfTimerBottom)
-                        tfTimerBottom.set_xy(left, bottom)
-                        tfTimerBottom.set_text(tmr)
-                    else
-                        tfTimerBottom := label.new(left, bottom, tmr, color = color_transparent, textcolor = in_tmr_color, style = label.style_label_up, size = in_tmr_size)
+                    tfNameBottom := label.new(left, bottom, lblt, color = color_transparent, textcolor = in_lbl_color, style = label.style_label_up, size = in_lbl_size)
 
         // imbalances (FVG + VI) — recomputed each tick like original
         if imbalances.size() > 0
