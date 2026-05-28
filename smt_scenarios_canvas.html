@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SMT Scenarios — Visual Reference</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#0a0a0f; color:#e0e0e0; font-family:'Segoe UI',Tahoma,sans-serif; padding:20px; }
+  .header { text-align:center; margin-bottom:24px; }
+  .header h1 { font-size:22px; color:#fff; }
+  .header p { color:#888; font-size:12px; margin-top:4px; }
+  .section { margin-bottom:32px; }
+  .section h2 { font-size:12px; color:#ffcc00; text-transform:uppercase; letter-spacing:2px;
+    margin-bottom:12px; padding-bottom:6px; border-bottom:1px solid #2a2a3a; }
+  .grid { display:grid; gap:14px; }
+  .cols-2 { grid-template-columns:1fr 1fr; }
+  .cols-4 { grid-template-columns:repeat(4,1fr); }
+  .panel { background:#111118; border:1px solid #2a2a3a; border-radius:8px; padding:12px; }
+  .panel h3 { font-size:13px; color:#ddd; margin-bottom:4px; }
+  .panel .desc { font-size:11px; color:#888; margin-bottom:10px; line-height:1.5; }
+  canvas { width:100%; height:220px; background:#08080d; border-radius:4px; display:block; }
+  .panel.pair canvas { height:280px; }
+  .panel.wide { grid-column:span 2; }
+  .panel.wide canvas { height:340px; }
+  .tag { display:inline-block; padding:1px 6px; border-radius:3px; font-size:10px; font-weight:bold; margin-right:6px; }
+  .tag.bull { background:#00e676; color:#000; }
+  .tag.bear { background:#ff1744; color:#fff; }
+  .tag.c3 { background:#ffcc00; color:#000; }
+  .tag.psp { background:#e040fb; color:#fff; }
+  .tag.c4h { background:#00bcd4; color:#000; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>SMT Scenarios — Visual Reference</h1>
+  <p>NQ vs YM correlated pair · ICT Smart Money Technique · all scenarios from the repo's quarter-sequence indicators</p>
+</div>
+
+<div class="section">
+  <h2>1 · SMT Divergence (core idea)</h2>
+  <div class="grid cols-2">
+    <div class="panel pair">
+      <h3><span class="tag bull">BULL SMT</span> Lower-Low Divergence</h3>
+      <div class="desc">One symbol prints a new lower low; the other fails to confirm — sellers exhausted, potential reversal up.</div>
+      <canvas id="bullSMT"></canvas>
+    </div>
+    <div class="panel pair">
+      <h3><span class="tag bear">BEAR SMT</span> Higher-High Divergence</h3>
+      <div class="desc">One symbol prints a new higher high; the other fails to confirm — buyers exhausted, potential reversal down.</div>
+      <canvas id="bearSMT"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>2 · C1 / C2 / C3 Fractal Closure</h2>
+  <div class="grid cols-2">
+    <div class="panel">
+      <h3><span class="tag bull">BULL C2</span> Sweep low + close back above</h3>
+      <div class="desc">C2 wicks below C1's low then closes back above it. C3 (next candle/block) becomes the armed zone.</div>
+      <canvas id="bullC2"></canvas>
+    </div>
+    <div class="panel">
+      <h3><span class="tag bear">BEAR C2</span> Sweep high + close back below</h3>
+      <div class="desc">C2 wicks above C1's high then closes back below it. C3 (next candle/block) becomes the armed zone.</div>
+      <canvas id="bearC2"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>3 · Quarter Sequences</h2>
+  <div class="grid cols-2">
+    <div class="panel">
+      <h3>Within-block: 1 HR split into 4 × 15 m</h3>
+      <div class="desc">Each new quarter's high/low is checked against the running max/min of earlier quarters within the same block.</div>
+      <canvas id="qWithin"></canvas>
+    </div>
+    <div class="panel">
+      <h3>Cross-block: Q4 of prev vs Q1 of current</h3>
+      <div class="desc">The 4 HR base file extends SMT detection across the block boundary so straddle-divergences are not missed.</div>
+      <canvas id="qCross"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>4 · PSP &amp; C3 Zone</h2>
+  <div class="grid cols-2">
+    <div class="panel pair">
+      <h3><span class="tag psp">PSP</span> Pair disagrees on the same bar</h3>
+      <div class="desc">Inside an active C3, NQ closes one direction and YM closes the other — sharpest SMT tell, paints the bar magenta.</div>
+      <canvas id="psp"></canvas>
+    </div>
+    <div class="panel pair">
+      <h3><span class="tag c3">C3</span> Silent vs alive</h3>
+      <div class="desc">Outside C3 the chart stays silent. When C3 is armed the background lights up and signals appear.</div>
+      <canvas id="c3zone"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>5 · MTF Nested Fractal (the full stack)</h2>
+  <div class="grid">
+    <div class="panel wide">
+      <h3>Daily Bias → 4HR C2 → 1HR Quarter SMT → 1HR C2 → 15m Quarter SMT → PSP</h3>
+      <div class="desc">Two C1/C2/C3 sequences nested: the 4HR macro C3 contains 1HR quarters; the 1HR micro C3 contains 15m quarters where PSP fires.</div>
+      <canvas id="mtf"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>6 · Daily Bias (4 scenarios)</h2>
+  <div class="grid cols-4">
+    <div class="panel">
+      <h3><span class="tag bull">BULL CONT.</span></h3>
+      <div class="desc">Yesterday closed above PDH.</div>
+      <canvas id="biasBC"></canvas>
+    </div>
+    <div class="panel">
+      <h3><span class="tag bull">BULL REV.</span></h3>
+      <div class="desc">Yesterday wicked below PDL but closed back above PDL.</div>
+      <canvas id="biasBR"></canvas>
+    </div>
+    <div class="panel">
+      <h3><span class="tag bear">BEAR CONT.</span></h3>
+      <div class="desc">Yesterday closed below PDL.</div>
+      <canvas id="biasXC"></canvas>
+    </div>
+    <div class="panel">
+      <h3><span class="tag bear">BEAR REV.</span></h3>
+      <div class="desc">Yesterday wicked above PDH but closed back below PDH.</div>
+      <canvas id="biasXR"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── colors ─────────────────────────────────────────────────────────
+const C = {
+  bull:'#00e676', bear:'#ff1744',
+  c3:'#ffcc00', psp:'#e040fb',
+  c4h:'#00bcd4', c4hb:'#ff5722',
+  nqUp:'#4ecdc4', nqDn:'#1a936f',
+  ymUp:'#ff8a65', ymDn:'#c0392b',
+  text:'#888', dim:'#444', level:'#5a5a8a'
+};
+
+// ─── canvas setup (handles HiDPI) ───────────────────────────────────
+function setup(id) {
+  const cvs = document.getElementById(id);
+  const dpr = window.devicePixelRatio || 1;
+  const w = cvs.clientWidth, h = cvs.clientHeight;
+  cvs.width = w * dpr; cvs.height = h * dpr;
+  const ctx = cvs.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.font = '11px Segoe UI, sans-serif';
+  return { ctx, w, h };
+}
+
+// ─── candle helper ──────────────────────────────────────────────────
+function drawCandles(ctx, candles, rect, opts={}) {
+  const { x, y, w, h } = rect;
+  let mn = Infinity, mx = -Infinity;
+  candles.forEach(c => { mn = Math.min(mn, c.low); mx = Math.max(mx, c.high); });
+  if (opts.minPrice !== undefined) mn = Math.min(mn, opts.minPrice);
+  if (opts.maxPrice !== undefined) mx = Math.max(mx, opts.maxPrice);
+  const pad = (mx - mn) * 0.1;
+  mn -= pad; mx += pad;
+  const span = mx - mn || 1;
+  const py = p => y + h - ((p - mn) / span) * h;
+  const slot = w / candles.length;
+  const cw = Math.max(4, slot * 0.55);
+  candles.forEach((c, i) => {
+    const cx = x + slot * (i + 0.5);
+    const up = c.close >= c.open;
+    const col = c.color || (up ? (opts.bull || C.bull) : (opts.bear || C.bear));
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(cx, py(c.high));
+    ctx.lineTo(cx, py(c.low));
+    ctx.stroke();
+    const yo = py(c.open), yc = py(c.close);
+    const top = Math.min(yo, yc);
+    const bh = Math.max(2, Math.abs(yc - yo));
+    ctx.fillStyle = col;
+    ctx.fillRect(cx - cw/2, top, cw, bh);
+    if (c.barColor) {
+      ctx.strokeStyle = c.barColor;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(cx - cw/2 - 1, top - 1, cw + 2, bh + 2);
+    }
+  });
+  return { py, slot, cw, x, y, w, h };
+}
+
+// ─── annotation helpers ─────────────────────────────────────────────
+function label(ctx, x, y, text, color='#ccc', align='center', size=11) {
+  ctx.fillStyle = color;
+  ctx.font = size + 'px Segoe UI, sans-serif';
+  ctx.textAlign = align;
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, x, y);
+}
+function line(ctx, x1, y1, x2, y2, color, width=1, dash=null) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  if (dash) ctx.setLineDash(dash); else ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+function box(ctx, x, y, w, h, fill, stroke=null) {
+  if (fill) { ctx.fillStyle = fill; ctx.fillRect(x, y, w, h); }
+  if (stroke) { ctx.strokeStyle = stroke; ctx.strokeRect(x, y, w, h); }
+}
+function arrow(ctx, x1, y1, x2, y2, color, width=1.5) {
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = width;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+  ctx.stroke();
+  const ang = Math.atan2(y2 - y1, x2 - x1);
+  const sz = 6;
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - sz*Math.cos(ang - 0.4), y2 - sz*Math.sin(ang - 0.4));
+  ctx.lineTo(x2 - sz*Math.cos(ang + 0.4), y2 - sz*Math.sin(ang + 0.4));
+  ctx.closePath(); ctx.fill();
+}
+const mk = (o,h,l,c) => ({ open:o, high:h, low:l, close:c });
+
+// ═══════════════════════════════════════════════════════════════════
+// SCENARIO 1A — Bullish SMT (NQ makes LL, YM fails)
+// ═══════════════════════════════════════════════════════════════════
+function renderBullSMT() {
+  const { ctx, w, h } = setup('bullSMT');
+  const padX = 60, padY = 26, gap = 16;
+  const chartH = (h - padY*2 - gap) / 2;
+  label(ctx, padX, 12, 'NQ — made lower low', C.nqUp, 'left', 11);
+  label(ctx, padX, padY + chartH + 4, 'YM — failed to confirm', C.ymUp, 'left', 11);
+
+  // Bar lows: 100, 98, 96, 92(LL), 93
+  const nq = [ mk(105,108,100,103), mk(103,105,98,100), mk(100,102,96,98),
+               mk(98,100,92,94), mk(94,99,93,98) ];
+  // Bar lows: 100, 98, 96, 97(failed), 98
+  const ym = [ mk(105,108,100,103), mk(103,105,98,100), mk(100,102,96,98),
+               mk(98,100,97,99),  mk(99,103,98,102) ];
+  const r1 = { x:padX, y:padY+4, w:w-padX-30, h:chartH };
+  const r2 = { x:padX, y:padY + chartH + gap + 4, w:w-padX-30, h:chartH };
+  const m1 = drawCandles(ctx, nq, r1, { bull:C.nqUp, bear:C.nqDn });
+  const m2 = drawCandles(ctx, ym, r2, { bull:C.ymUp, bear:C.ymDn });
+
+  const x1 = r1.x + m1.slot * 2.5;
+  const x2 = r1.x + m1.slot * 3.5;
+  // SMT line on NQ (made the LL)
+  line(ctx, x1, m1.py(96), x2, m1.py(92), C.bull, 2);
+  label(ctx, x2 + 4, m1.py(92) + 8, '▲ Bull SMT', C.bull, 'left', 11);
+  // YM "failed"
+  line(ctx, x1, m2.py(96), x2, m2.py(97), C.bull, 2, [4,3]);
+  label(ctx, x2 + 4, m2.py(97) - 6, 'no LL', C.bull, 'left', 10);
+  // prior low refs
+  line(ctx, r1.x, m1.py(96), r1.x + r1.w, m1.py(96), C.level, 1, [2,2]);
+  line(ctx, r2.x, m2.py(96), r2.x + r2.w, m2.py(96), C.level, 1, [2,2]);
+  label(ctx, r1.x + r1.w + 4, m1.py(96), 'prior low', C.text, 'left', 9);
+  label(ctx, r2.x + r2.w + 4, m2.py(96), 'prior low', C.text, 'left', 9);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SCENARIO 1B — Bearish SMT (NQ makes HH, YM fails)
+// ═══════════════════════════════════════════════════════════════════
+function renderBearSMT() {
+  const { ctx, w, h } = setup('bearSMT');
+  const padX = 60, padY = 26, gap = 16;
+  const chartH = (h - padY*2 - gap) / 2;
+  label(ctx, padX, 12, 'NQ — made higher high', C.nqUp, 'left', 11);
+  label(ctx, padX, padY + chartH + 4, 'YM — failed to confirm', C.ymUp, 'left', 11);
+
+  const nq = [ mk(95,98,92,97), mk(97,100,95,99), mk(99,102,97,101),
+               mk(101,108,100,105), mk(105,106,100,102) ];
+  const ym = [ mk(95,98,92,97), mk(97,100,95,99), mk(99,102,97,101),
+               mk(101,102,99,100), mk(100,101,95,96) ];
+  const r1 = { x:padX, y:padY+4, w:w-padX-30, h:chartH };
+  const r2 = { x:padX, y:padY + chartH + gap + 4, w:w-padX-30, h:chartH };
+  const m1 = drawCandles(ctx, nq, r1, { bull:C.nqUp, bear:C.nqDn });
+  const m2 = drawCandles(ctx, ym, r2, { bull:C.ymUp, bear:C.ymDn });
+
+  const x1 = r1.x + m1.slot * 2.5;
+  const x2 = r1.x + m1.slot * 3.5;
+  line(ctx, x1, m1.py(102), x2, m1.py(108), C.bear, 2);
+  label(ctx, x2 + 4, m1.py(108) - 6, '▼ Bear SMT', C.bear, 'left', 11);
+  line(ctx, x1, m2.py(102), x2, m2.py(102), C.bear, 2, [4,3]);
+  label(ctx, x2 + 4, m2.py(102) + 8, 'no HH', C.bear, 'left', 10);
+  line(ctx, r1.x, m1.py(102), r1.x + r1.w, m1.py(102), C.level, 1, [2,2]);
+  line(ctx, r2.x, m2.py(102), r2.x + r2.w, m2.py(102), C.level, 1, [2,2]);
+  label(ctx, r1.x + r1.w + 4, m1.py(102), 'prior high', C.text, 'left', 9);
+  label(ctx, r2.x + r2.w + 4, m2.py(102), 'prior high', C.text, 'left', 9);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SCENARIO 2A — Bullish C2 closure
+// ═══════════════════════════════════════════════════════════════════
+function renderBullC2() {
+  const { ctx, w, h } = setup('bullC2');
+  const padX = 60, padY = 32;
+  const chartH = h - padY*2;
+  // C1 sets low at 95; C2 sweeps to 90 then closes at 102
+  const candles = [ mk(102,105,95,98), mk(98,100,90,102), mk(102,110,100,108), mk(108,113,105,112) ];
+  const r = { x:padX, y:padY, w:w - padX - 30, h:chartH };
+  const slot = r.w / candles.length;
+  // C3 highlight (3rd candle)
+  box(ctx, r.x + slot*2, r.y, slot, r.h, 'rgba(255,204,0,0.10)');
+  const m = drawCandles(ctx, candles, r);
+  line(ctx, r.x, m.py(95), r.x + r.w, m.py(95), C.level, 1, [3,3]);
+  label(ctx, r.x - 4, m.py(95), 'C1 low', C.text, 'right', 10);
+  ['C1','C2','C3','→'].forEach((lab,i) => {
+    label(ctx, r.x + slot*(i+0.5), r.y - 14, lab,
+      i===1 ? C.bull : (i===2 ? C.c3 : '#aaa'), 'center', 12);
+  });
+  const xC2 = r.x + slot * 1.5;
+  arrow(ctx, xC2 - 16, m.py(95), xC2 - 16, m.py(91), '#ffaaaa', 1.2);
+  label(ctx, xC2 - 20, m.py(93), 'sweep', '#ffaaaa', 'right', 10);
+  arrow(ctx, xC2 + 16, m.py(91), xC2 + 16, m.py(101), C.bull, 1.5);
+  label(ctx, xC2 + 20, m.py(96), 'close back', C.bull, 'left', 10);
+  label(ctx, r.x + slot*2.5, r.y + r.h - 8, 'C3 ARMED', C.c3, 'center', 11);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SCENARIO 2B — Bearish C2 closure
+// ═══════════════════════════════════════════════════════════════════
+function renderBearC2() {
+  const { ctx, w, h } = setup('bearC2');
+  const padX = 60, padY = 32;
+  const chartH = h - padY*2;
+  // C1 high 110; C2 wicks to 115 then closes at 100
+  const candles = [ mk(98,110,95,105), mk(105,115,102,100), mk(100,102,92,95), mk(95,97,88,90) ];
+  const r = { x:padX, y:padY, w:w - padX - 30, h:chartH };
+  const slot = r.w / candles.length;
+  box(ctx, r.x + slot*2, r.y, slot, r.h, 'rgba(255,204,0,0.10)');
+  const m = drawCandles(ctx, candles, r);
+  line(ctx, r.x, m.py(110), r.x + r.w, m.py(110), C.level, 1, [3,3]);
+  label(ctx, r.x - 4, m.py(110), 'C1 high', C.text, 'right', 10);
+  ['C1','C2','C3','→'].forEach((lab,i) => {
+    label(ctx, r.x + slot*(i+0.5), r.y - 14, lab,
+      i===1 ? C.bear : (i===2 ? C.c3 : '#aaa'), 'center', 12);
+  });
+  const xC2 = r.x + slot * 1.5;
+  arrow(ctx, xC2 - 16, m.py(110), xC2 - 16, m.py(114), '#ffaaaa', 1.2);
+  label(ctx, xC2 - 20, m.py(112), 'sweep', '#ffaaaa', 'right', 10);
+  arrow(ctx, xC2 + 16, m.py(114), xC2 + 16, m.py(102), C.bear, 1.5);
+  label(ctx, xC2 + 20, m.py(108), 'close back', C.bear, 'left', 10);
+  label(ctx, r.x + slot*2.5, r.y + r.h - 8, 'C3 ARMED', C.c3, 'center', 11);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SCENARIO 3A — Quarter sequences within block
+// ═══════════════════════════════════════════════════════════════════
+function renderQWithin() {
+  const { ctx, w, h } = setup('qWithin');
+  const padX = 50, padY = 30;
+  const chartH = h - padY*2;
+  // 4 × 15m quarters of one 1HR block; Q3 makes a HH within block
+  const candles = [ mk(100,103,99,102), mk(102,105,100,104), mk(104,110,103,108), mk(108,109,105,106) ];
+  const r = { x:padX, y:padY, w:w - padX - 20, h:chartH };
+  const m = drawCandles(ctx, candles, r);
+  ['Q1','Q2','Q3','Q4'].forEach((lab,i) => {
+    label(ctx, r.x + m.slot*(i+0.5), r.y - 12, lab, '#ddd', 'center', 11);
+  });
+  // SMT line connecting Q2 high (105) → Q3 high (110)
+  line(ctx, r.x + m.slot*1.5, m.py(105), r.x + m.slot*2.5, m.py(110), C.bear, 2);
+  label(ctx, r.x + m.slot*2.5 + 4, m.py(110) - 8, 'HH on NQ — YM failed', C.bear, 'left', 10);
+  // block bracket
+  line(ctx, r.x, r.y + r.h + 8, r.x + r.w, r.y + r.h + 8, C.c3, 1);
+  label(ctx, r.x + r.w/2, r.y + r.h + 18, '◄ 1 HR block (4 × 15 m) ►', C.c3, 'center', 10);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SCENARIO 3B — Cross-block SMT (Q4 prev vs Q1 current)
+// ═══════════════════════════════════════════════════════════════════
+function renderQCross() {
+  const { ctx, w, h } = setup('qCross');
+  const padX = 30, padY = 30;
+  const chartH = h - padY*2;
+  const candles = [
+    mk(95,98,93,97),  mk(97,100,96,99), mk(99,101,97,100), mk(100,105,99,104),
+    mk(104,108,102,103), mk(103,105,100,102), mk(102,104,99,100), mk(100,102,97,98)
+  ];
+  const r = { x:padX + 16, y:padY, w:w - padX*2 - 16, h:chartH };
+  const m = drawCandles(ctx, candles, r);
+  const sepX = r.x + m.slot * 4;
+  line(ctx, sepX, r.y, sepX, r.y + r.h, C.c3, 1, [3,3]);
+  for (let i = 0; i < 8; i++) {
+    label(ctx, r.x + m.slot*(i+0.5), r.y - 12, 'Q'+((i%4)+1), '#aaa', 'center', 9);
+  }
+  label(ctx, r.x + m.slot*2, r.y + r.h + 12, 'Block 1', C.text, 'center', 10);
+  label(ctx, r.x + m.slot*6, r.y + r.h + 12, 'Block 2', C.text, 'center', 10);
+  // cross-block SMT: prev Q4 high (105) → curr Q1 high (108)
+  line(ctx, r.x + m.slot*3.5, m.py(105), r.x + m.slot*4.5, m.py(108), C.bear, 2);
+  label(ctx, r.x + m.slot*4.5 + 4, m.py(108) - 8, 'cross-block HH', C.bear, 'left', 10);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SCENARIO 4A — PSP (Precision Swing Point)
+// ═══════════════════════════════════════════════════════════════════
+function renderPSP() {
+  const { ctx, w, h } = setup('psp');
+  const padX = 60, padY = 26, gap = 16;
+  const chartH = (h - padY*2 - gap) / 2;
+  label(ctx, padX, 12, 'NQ — bullish bar', C.nqUp, 'left', 11);
+  label(ctx, padX, padY + chartH + 4, 'YM — bearish bar (same time)', C.ymUp, 'left', 11);
+
+  const nq = [ mk(100,102,99,101), mk(101,103,100,102), mk(102,106,101,105),
+               mk(105,106,102,103), mk(103,105,102,104) ];
+  const ym = [ mk(100,102,99,101), mk(101,103,100,102), mk(102,103,98,99),
+               mk(99,100,96,97),   mk(97,99,96,98) ];
+  nq[2].barColor = C.psp;
+  ym[2].barColor = C.psp;
+
+  const r1 = { x:padX, y:padY+4, w:w-padX-30, h:chartH };
+  const r2 = { x:padX, y:padY + chartH + gap + 4, w:w-padX-30, h:chartH };
+  // C3 zone tint (signals "alive")
+  box(ctx, r1.x, r1.y, r1.w, r1.h, 'rgba(255,204,0,0.06)');
+  box(ctx, r2.x, r2.y, r2.w, r2.h, 'rgba(255,204,0,0.06)');
+  const m1 = drawCandles(ctx, nq, r1, { bull:C.nqUp, bear:C.nqDn });
+  drawCandles(ctx, ym, r2, { bull:C.ymUp, bear:C.ymDn });
+
+  const xp = r1.x + m1.slot * 2.5;
+  line(ctx, xp, r1.y - 2, xp, r2.y + r2.h + 2, C.psp, 1, [3,3]);
+  label(ctx, xp, r1.y - 14, 'PSP', C.psp, 'center', 11);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SCENARIO 4B — C3 zone (silent vs alive)
+// ═══════════════════════════════════════════════════════════════════
+function renderC3Zone() {
+  const { ctx, w, h } = setup('c3zone');
+  const padX = 30, padY = 32;
+  const chartH = h - padY*2;
+  const r = { x:padX, y:padY, w:w - padX*2, h:chartH };
+  // right half = C3 active
+  box(ctx, r.x + r.w/2, r.y, r.w/2, r.h, 'rgba(255,204,0,0.10)');
+  const candles = [
+    mk(99,101,97,100), mk(100,102,99,101), mk(101,102,100,100), mk(100,102,98,99),
+    mk(99,105,98,104), mk(104,106,103,105), mk(105,107,103,104), mk(104,105,100,101)
+  ];
+  candles[4].barColor = C.psp; // first PSP fires inside C3
+  const m = drawCandles(ctx, candles, r);
+  line(ctx, r.x + r.w/2, r.y, r.x + r.w/2, r.y + r.h, C.c3, 1, [3,3]);
+  label(ctx, r.x + r.w/4, r.y - 14, 'Silent (no C3)', C.text, 'center', 11);
+  label(ctx, r.x + r.w*0.75, r.y - 14, 'C3 ARMED — alive', C.c3, 'center', 11);
+  // hourly separators only inside C3
+  for (let i = 5; i < 8; i++) {
+    const xs = r.x + m.slot * i;
+    line(ctx, xs, r.y, xs, r.y + r.h, 'rgba(255,255,255,0.20)', 1, [2,2]);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SCENARIO 5 — MTF nested (4HR macro + 1HR micro)
+// ═══════════════════════════════════════════════════════════════════
+function renderMTF() {
+  const { ctx, w, h } = setup('mtf');
+  const padX = 70, padY = 38, gap = 22;
+  const chartH = (h - padY*2 - gap) / 2;
+
+  // Top: 4HR row (C1, C2 bear, C3 armed, follow-through)
+  const r1 = { x:padX, y:padY, w:w - padX*2, h:chartH };
+  const candles4h = [ mk(98,110,95,105), mk(105,115,102,100), mk(100,102,90,92), mk(92,95,85,88) ];
+  const slot1 = r1.w / candles4h.length;
+  box(ctx, r1.x + slot1*2, r1.y, slot1, r1.h, 'rgba(0,188,212,0.10)');
+  const m1 = drawCandles(ctx, candles4h, r1, { bull:C.bull, bear:C.bear });
+  ['C1 (4H)','C2 (4H) ▼','C3 (4H)','→'].forEach((lab,i) => {
+    label(ctx, r1.x + slot1*(i+0.5), r1.y - 14, lab,
+      i===1 ? C.bear : (i===2 ? C.c4h : '#aaa'), 'center', 11);
+  });
+  label(ctx, padX, 14, 'Level 1 — 4HR macro fractal', C.c4h, 'left', 11);
+  // Daily bias badge (top-right)
+  ctx.fillStyle = C.bear;
+  ctx.fillRect(w - padX - 86, 4, 86, 18);
+  label(ctx, w - padX - 43, 13, 'BIAS: BEAR ▼', '#fff', 'center', 11);
+
+  // Bottom: 1HR row zoomed inside the 4HR C3
+  const r2 = { x:padX, y:padY + chartH + gap, w:w - padX*2, h:chartH };
+  const candles1h = [ mk(96,102,94,100), mk(100,105,98,95), mk(95,96,88,90), mk(90,91,85,86) ];
+  const slot2 = r2.w / candles1h.length;
+  box(ctx, r2.x + slot2*2, r2.y, slot2, r2.h, 'rgba(255,204,0,0.12)');
+  drawCandles(ctx, candles1h, r2, { bull:C.bull, bear:C.bear });
+  ['C1 (1H)','C2 (1H) ◆','C3 (1H)','→'].forEach((lab,i) => {
+    label(ctx, r2.x + slot2*(i+0.5), r2.y - 14, lab,
+      i===1 ? C.bear : (i===2 ? C.c3 : '#aaa'), 'center', 11);
+  });
+  label(ctx, padX, padY + chartH + gap - 4, 'Level 2 — 1HR micro fractal (zoomed inside the 4HR C3)', C.c3, 'left', 11);
+
+  // 4 × 15m quarter dots inside the 1HR C3 cell, with one PSP dot
+  const c3x = r2.x + slot2 * 2;
+  for (let q = 0; q < 4; q++) {
+    const qx = c3x + slot2 * (q + 0.5) / 4;
+    const qy = r2.y + r2.h * 0.55;
+    ctx.fillStyle = q === 2 ? C.psp : C.bear;
+    ctx.beginPath();
+    ctx.arc(qx, qy, 4, 0, Math.PI*2); ctx.fill();
+    label(ctx, qx, qy + 14, 'Q'+(q+1), '#aaa', 'center', 9);
+  }
+  label(ctx, c3x + slot2/2, r2.y + r2.h - 8,
+    '15m quarter SMT  +  PSP (●)', C.psp, 'center', 10);
+
+  // Connector showing zoom-in
+  arrow(ctx, r1.x + slot1*2.5, r1.y + r1.h + 2,
+              r2.x + slot2*0.5, r2.y - 2, '#666', 1);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SCENARIO 6 — Daily Bias (4 cases)
+// ═══════════════════════════════════════════════════════════════════
+function renderBias(id, type) {
+  const { ctx, w, h } = setup(id);
+  const padX = 30, padY = 26;
+  const chartH = h - padY*2;
+  const PDH = 105, PDL = 95;
+
+  let candles, biasColor, biasText;
+  if (type === 'bullCont') {
+    candles = [ mk(98,105,95,100), mk(100,110,98,108), mk(108,112,105,110) ];
+    biasColor = C.bull; biasText = '▲ BULL';
+  } else if (type === 'bullRev') {
+    candles = [ mk(98,105,95,100), mk(100,102,90,98),  mk(98,103,96,102) ];
+    biasColor = C.bull; biasText = '▲ BULL';
+  } else if (type === 'bearCont') {
+    candles = [ mk(102,105,95,100), mk(100,102,88,92), mk(92,95,85,88) ];
+    biasColor = C.bear; biasText = '▼ BEAR';
+  } else {
+    candles = [ mk(102,105,95,100), mk(100,110,98,102), mk(102,104,96,98) ];
+    biasColor = C.bear; biasText = '▼ BEAR';
+  }
+  const r = { x:padX + 14, y:padY + 6, w:w - padX*2 - 14, h:chartH - 6 };
+  const m = drawCandles(ctx, candles, r, { minPrice:84, maxPrice:114 });
+  // PDH / PDL
+  line(ctx, r.x, m.py(PDH), r.x + r.w, m.py(PDH), '#aaa', 1, [3,3]);
+  line(ctx, r.x, m.py(PDL), r.x + r.w, m.py(PDL), '#aaa', 1, [3,3]);
+  label(ctx, r.x - 4, m.py(PDH), 'PDH', '#aaa', 'right', 9);
+  label(ctx, r.x - 4, m.py(PDL), 'PDL', '#aaa', 'right', 9);
+  ['D-2','D-1','D'].forEach((lab,i) => {
+    label(ctx, r.x + m.slot*(i+0.5), r.y + r.h + 12, lab, '#777', 'center', 9);
+  });
+  // bias badge
+  ctx.fillStyle = biasColor;
+  ctx.fillRect(w - 64, 4, 58, 16);
+  label(ctx, w - 35, 12, biasText, type.startsWith('bull') ? '#000' : '#fff', 'center', 10);
+}
+
+// ─── run all ────────────────────────────────────────────────────────
+function renderAll() {
+  renderBullSMT();  renderBearSMT();
+  renderBullC2();   renderBearC2();
+  renderQWithin();  renderQCross();
+  renderPSP();      renderC3Zone();
+  renderMTF();
+  renderBias('biasBC','bullCont');
+  renderBias('biasBR','bullRev');
+  renderBias('biasXC','bearCont');
+  renderBias('biasXR','bearRev');
+}
+window.addEventListener('load', renderAll);
+let resizeT = null;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeT);
+  resizeT = setTimeout(renderAll, 150);
+});
+</script>
+
+</body>
+</html>
