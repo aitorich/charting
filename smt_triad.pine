@@ -37,12 +37,12 @@ string otherSym = str.contains(symA, syminfo.ticker) ? symB : symA
 
 bool   showC2     = input.bool(true, "Show C2 SMT (single-bar)",   group=gT)
 bool   show2Bar   = input.bool(true, "Show 2-bar SMT (C2 + C3)",   group=gT)
-int    swingL     = input.int(3, "Swing Pivot Left",  minval=1, group=gT)
-int    swingR     = input.int(3, "Swing Pivot Right", minval=1, group=gT)
+int    swingL     = input.int(2, "Swing Pivot Left",  minval=1, maxval=20, group=gT)
+int    swingR     = input.int(2, "Swing Pivot Right", minval=1, maxval=20, group=gT)
 
-bool   requireCloseBack = input.bool(true, "Require close back inside level (C2 closure)", group=gV)
+bool   requireCloseBack = input.bool(false, "Require close back inside level (strict C2)", group=gV)
 
-int    displayDays = input.int(3, "Show Last N Days", minval=1, group=gD)
+int    displayBars = input.int(2000, "Show Last N Bars", minval=50, group=gD)
 
 color  bullClr     = input.color(color.new(#00e676, 0),  "Bull SMT Color",   group=gSt)
 color  bearClr     = input.color(color.new(#ff1744, 0),  "Bear SMT Color",   group=gSt)
@@ -54,11 +54,8 @@ bool   showLines   = input.bool(true, "Show pivot lines", group=gSt)
 // ─── DATA (the OTHER pair member) ────────────────────────────────────
 [bH, bL, bO, bC] = request.security(otherSym, timeframe.period, [high, low, open, close], lookahead=barmerge.lookahead_off)
 
-// ─── DISPLAY FILTER ──────────────────────────────────────────────────
-int tfSec = timeframe.in_seconds(timeframe.period)
-int barsPerDay = math.max(1, int(86400.0 / math.max(tfSec, 1)))
-int lookbackBars = displayDays * barsPerDay
-bool inDisplay = bar_index >= last_bar_index - lookbackBars
+// ─── DISPLAY FILTER (bar-based, works on any TF from 5m to 1W) ──────
+bool inDisplay = bar_index >= last_bar_index - displayBars
 
 // ════════════════════════════════════════════════════════════════════
 // PIVOT DETECTION (chart + other)
