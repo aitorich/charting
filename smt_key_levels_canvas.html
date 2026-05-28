@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SMT at Key Levels — Canvas Reference</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#0a0a0f; color:#e0e0e0; font-family:'Segoe UI',Tahoma,sans-serif; padding:20px; }
+  .header { text-align:center; margin-bottom:24px; }
+  .header h1 { font-size:22px; color:#fff; }
+  .header p { color:#888; font-size:12px; margin-top:4px; }
+  .section { margin-bottom:32px; }
+  .section h2 { font-size:12px; color:#ffcc00; text-transform:uppercase; letter-spacing:2px;
+    margin-bottom:12px; padding-bottom:6px; border-bottom:1px solid #2a2a3a; }
+  .grid { display:grid; gap:14px; }
+  .cols-2 { grid-template-columns:1fr 1fr; }
+  .cols-3 { grid-template-columns:1fr 1fr 1fr; }
+  .panel { background:#111118; border:1px solid #2a2a3a; border-radius:8px; padding:12px; position:relative; }
+  .panel.valid   { border-left:3px solid #00e676; }
+  .panel.invalid { border-left:3px solid #ff1744; }
+  .panel h3 { font-size:13px; color:#ddd; margin-bottom:4px; padding-right:80px; }
+  .panel .desc { font-size:11px; color:#888; margin-bottom:10px; line-height:1.5; }
+  canvas { width:100%; height:240px; background:#08080d; border-radius:4px; display:block; }
+  .panel.pair canvas { height:300px; }
+  .panel.wide { grid-column:span 2; }
+  .panel.wide canvas { height:340px; }
+  .badge { position:absolute; top:12px; right:12px; padding:3px 10px; border-radius:3px;
+    font-size:10px; font-weight:bold; letter-spacing:1px; }
+  .badge.valid   { background:#00e676; color:#000; }
+  .badge.invalid { background:#ff1744; color:#fff; }
+  .checklist { display:grid; grid-template-columns:1fr 1fr; gap:12px 18px; padding:6px; }
+  .check { display:flex; align-items:flex-start; gap:10px; font-size:12px; line-height:1.5; }
+  .check .mark { font-size:16px; font-weight:bold; flex-shrink:0; width:18px; line-height:1.2; }
+  .check .mark.ok { color:#00e676; }
+  .check .mark.no { color:#ff1744; }
+  .check strong { color:#fff; display:block; margin-bottom:2px; }
+  .check span { color:#888; }
+  .tag { display:inline-block; padding:1px 6px; border-radius:3px; font-size:10px; font-weight:bold; margin-right:6px; vertical-align:middle; }
+  .tag.bull { background:#00e676; color:#000; }
+  .tag.bear { background:#ff1744; color:#fff; }
+  .tag.lvl  { background:#ffb74d; color:#000; }
+  .tag.asia { background:#7c4dff; color:#fff; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>SMT at Key Levels — Canvas Reference</h1>
+  <p>The high-quality SMT setup: divergence happens AT a level where liquidity was resting</p>
+</div>
+
+<!-- Section 1 -->
+<div class="section">
+  <h2>1 · Anatomy of a valid SMT @ key level</h2>
+  <div class="grid">
+    <div class="panel pair wide valid">
+      <span class="badge valid">VALID</span>
+      <h3>Level → Sweep on one symbol → Hold on the other → SMT line</h3>
+      <div class="desc">NQ wicks beyond the level (liquidity grab) and closes back inside; YM never reaches the equivalent level. The asymmetric reaction at a real liquidity pool is the signal.</div>
+      <canvas id="concept"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- Section 2 -->
+<div class="section">
+  <h2>2 · Valid scenarios — daily liquidity (PDH / PDL)</h2>
+  <div class="grid cols-2">
+    <div class="panel pair valid">
+      <span class="badge valid">VALID</span>
+      <h3><span class="tag bull">BULL</span> @ <span class="tag lvl">PDL</span> sweep</h3>
+      <div class="desc">NQ wicks below the previous-day low and closes back above it; YM holds above its PDL. Bullish reversal SMT at daily liquidity.</div>
+      <canvas id="bullPDL"></canvas>
+    </div>
+    <div class="panel pair valid">
+      <span class="badge valid">VALID</span>
+      <h3><span class="tag bear">BEAR</span> @ <span class="tag lvl">PDH</span> sweep</h3>
+      <div class="desc">NQ wicks above the previous-day high and closes back below it; YM holds below its PDH. Bearish reversal SMT at daily liquidity.</div>
+      <canvas id="bearPDH"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- Section 3 -->
+<div class="section">
+  <h2>3 · Valid scenarios — other key levels</h2>
+  <div class="grid cols-2">
+    <div class="panel pair valid">
+      <span class="badge valid">VALID</span>
+      <h3><span class="tag bull">BULL</span> @ <span class="tag lvl">Equal Lows (EQL)</span></h3>
+      <div class="desc">Two prior wicks form an equal low on NQ — that's a relative-equal-low liquidity pool. Current bar takes it; YM's own EQL holds. Reversal SMT at EQL.</div>
+      <canvas id="bullEQL"></canvas>
+    </div>
+    <div class="panel pair valid">
+      <span class="badge valid">VALID</span>
+      <h3><span class="tag bear">BEAR</span> @ <span class="tag asia">Asia Session High</span></h3>
+      <div class="desc">Asia range = overnight liquidity. London/NY runs the Asia high on NQ; YM's Asia high holds. Bearish reversal SMT at session liquidity.</div>
+      <canvas id="bearAsia"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- Section 4 -->
+<div class="section">
+  <h2>4 · Invalid patterns (look-alikes that don't qualify)</h2>
+  <div class="grid cols-3">
+    <div class="panel pair invalid">
+      <span class="badge invalid">INVALID</span>
+      <h3>Both sweep the level</h3>
+      <div class="desc">NQ and YM both take PDL — no divergence, just a synchronized liquidity raid + continuation.</div>
+      <canvas id="invBoth"></canvas>
+    </div>
+    <div class="panel pair invalid">
+      <span class="badge invalid">INVALID</span>
+      <h3>Sweep + close through</h3>
+      <div class="desc">NQ takes PDL and closes below it. That's a breakout / continuation — not a reversal SMT, even if YM holds.</div>
+      <canvas id="invThrough"></canvas>
+    </div>
+    <div class="panel pair invalid">
+      <span class="badge invalid">INVALID</span>
+      <h3>Misaligned timing</h3>
+      <div class="desc">NQ swept hours ago; YM is sweeping now. Different liquidity events — no smart-money divergence.</div>
+      <canvas id="invTime"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- Section 5 -->
+<div class="section">
+  <h2>5 · Validity checklist</h2>
+  <div class="grid">
+    <div class="panel">
+      <h3>For an SMT at a key level to count as a valid setup</h3>
+      <div class="checklist">
+        <div class="check"><span class="mark ok">✓</span><div><strong>Level is structural</strong><span>PDH/PDL, PWH/PWL, session high/low, swing pivot, EQH/EQL, HTF FVG, order block, weekly open.</span></div></div>
+        <div class="check"><span class="mark ok">✓</span><div><strong>One symbol sweeps</strong><span>Wick prints clearly beyond the level — a real liquidity grab, not just a touch.</span></div></div>
+        <div class="check"><span class="mark ok">✓</span><div><strong>The other holds</strong><span>Does not reach beyond the equivalent level on its own chart.</span></div></div>
+        <div class="check"><span class="mark ok">✓</span><div><strong>Same time window</strong><span>Both reactions occur on the same bar (or the same quarter for quarter-sequence SMT).</span></div></div>
+        <div class="check"><span class="mark ok">✓</span><div><strong>Closes back inside</strong><span>The sweeping bar closes back through the level — confirms rejection (C2 closure).</span></div></div>
+        <div class="check"><span class="mark ok">✓</span><div><strong>Bias-aligned</strong><span>Direction matches the daily bias filter (PDH/PDL C2 from MTF v2).</span></div></div>
+        <div class="check"><span class="mark no">✗</span><div><strong>Both sides sweep</strong><span>If both NQ and YM take the level, there is no divergence at all.</span></div></div>
+        <div class="check"><span class="mark no">✗</span><div><strong>Sweep + close through</strong><span>A close beyond the level is a breakout / continuation, not a reversal SMT.</span></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── colors ─────────────────────────────────────────────────────────
+const C = {
+  bull:'#00e676', bear:'#ff1744',
+  level:'#ffb74d', sweep:'#ff5577',
+  asia:'#7c4dff', psp:'#e040fb',
+  nqUp:'#4ecdc4', nqDn:'#1a936f',
+  ymUp:'#ff8a65', ymDn:'#c0392b',
+  text:'#888', dim:'#444', faint:'#5a5a8a'
+};
+
+// ─── canvas setup (HiDPI) ───────────────────────────────────────────
+function setup(id) {
+  const cvs = document.getElementById(id);
+  const dpr = window.devicePixelRatio || 1;
+  const w = cvs.clientWidth, h = cvs.clientHeight;
+  cvs.width = w * dpr; cvs.height = h * dpr;
+  const ctx = cvs.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.font = '11px Segoe UI, sans-serif';
+  return { ctx, w, h };
+}
+
+// ─── primitives ─────────────────────────────────────────────────────
+function label(ctx, x, y, text, color='#ccc', align='center', size=11, weight='normal') {
+  ctx.fillStyle = color;
+  ctx.font = weight + ' ' + size + 'px Segoe UI, sans-serif';
+  ctx.textAlign = align;
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, x, y);
+}
+function line(ctx, x1, y1, x2, y2, color, width=1, dash=null) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  if (dash) ctx.setLineDash(dash); else ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+function box(ctx, x, y, w, h, fill, stroke=null) {
+  if (fill)   { ctx.fillStyle = fill;     ctx.fillRect(x, y, w, h); }
+  if (stroke) { ctx.strokeStyle = stroke; ctx.strokeRect(x, y, w, h); }
+}
+function arrow(ctx, x1, y1, x2, y2, color, width=1.5) {
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = width;
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+  ctx.stroke();
+  const ang = Math.atan2(y2 - y1, x2 - x1);
+  const sz = 6;
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - sz*Math.cos(ang - 0.4), y2 - sz*Math.sin(ang - 0.4));
+  ctx.lineTo(x2 - sz*Math.cos(ang + 0.4), y2 - sz*Math.sin(ang + 0.4));
+  ctx.closePath(); ctx.fill();
+}
+
+// ─── candle helper ──────────────────────────────────────────────────
+function drawCandles(ctx, candles, rect, opts={}) {
+  const { x, y, w, h } = rect;
+  let mn = Infinity, mx = -Infinity;
+  candles.forEach(c => { mn = Math.min(mn, c.low); mx = Math.max(mx, c.high); });
+  if (opts.minPrice !== undefined) mn = Math.min(mn, opts.minPrice);
+  if (opts.maxPrice !== undefined) mx = Math.max(mx, opts.maxPrice);
+  const pad = (mx - mn) * 0.12;
+  mn -= pad; mx += pad;
+  const span = mx - mn || 1;
+  const py = p => y + h - ((p - mn) / span) * h;
+  const slot = w / candles.length;
+  const cw = Math.max(4, slot * 0.55);
+  candles.forEach((c, i) => {
+    const cx = x + slot * (i + 0.5);
+    const up = c.close >= c.open;
+    const col = c.color || (up ? (opts.bull || C.bull) : (opts.bear || C.bear));
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(cx, py(c.high));
+    ctx.lineTo(cx, py(c.low));
+    ctx.stroke();
+    const yo = py(c.open), yc = py(c.close);
+    const top = Math.min(yo, yc);
+    const bh = Math.max(2, Math.abs(yc - yo));
+    ctx.fillStyle = col;
+    ctx.fillRect(cx - cw/2, top, cw, bh);
+    if (c.barColor) {
+      ctx.strokeStyle = c.barColor;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(cx - cw/2 - 1, top - 1, cw + 2, bh + 2);
+    }
+  });
+  return { py, slot, cw, x, y, w, h };
+}
+
+const mk = (o,h,l,c) => ({ open:o, high:h, low:l, close:c });
+
+// ─── pair-chart helper (NQ top, YM bottom + level line on both) ─────
+function pairChart(ctx, w, h, nqData, ymData, level, opts={}) {
+  const padX = opts.padX || 64;
+  const padTop = opts.padTop || 28;
+  const padBot = opts.padBot || 18;
+  const gap = opts.gap || 14;
+  const chartH = (h - padTop - padBot - gap) / 2;
+
+  const r1 = { x:padX, y:padTop, w:w - padX - 56, h:chartH };
+  const r2 = { x:padX, y:padTop + chartH + gap, w:w - padX - 56, h:chartH };
+
+  const minP = opts.minP, maxP = opts.maxP;
+  const m1 = drawCandles(ctx, nqData, r1, { bull:C.nqUp, bear:C.nqDn, minPrice:minP, maxPrice:maxP });
+  const m2 = drawCandles(ctx, ymData, r2, { bull:C.ymUp, bear:C.ymDn, minPrice:minP, maxPrice:maxP });
+
+  // symbol labels
+  label(ctx, padX, 12, opts.nqTag || 'NQ', C.nqUp, 'left', 11, 'bold');
+  label(ctx, padX, padTop + chartH + gap - 2, opts.ymTag || 'YM', C.ymUp, 'left', 11, 'bold');
+
+  // level line on both charts
+  if (level !== null && level !== undefined) {
+    const ymLevel = opts.ymLevel !== undefined ? opts.ymLevel : level;
+    line(ctx, r1.x, m1.py(level), r1.x + r1.w, m1.py(level), C.level, 1.5, [5,3]);
+    line(ctx, r2.x, m2.py(ymLevel), r2.x + r2.w, m2.py(ymLevel), C.level, 1.5, [5,3]);
+    label(ctx, r1.x + r1.w + 4, m1.py(level), opts.levelName || 'LEVEL', C.level, 'left', 10, 'bold');
+    label(ctx, r2.x + r2.w + 4, m2.py(ymLevel), opts.levelName || 'LEVEL', C.level, 'left', 10, 'bold');
+  }
+
+  return { r1, r2, m1, m2 };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 1 · CONCEPT — anatomy of a valid SMT @ key level
+// ═══════════════════════════════════════════════════════════════════
+function renderConcept() {
+  const { ctx, w, h } = setup('concept');
+  const LV = 95;
+  const nq = [
+    mk(102,104,100,101),
+    mk(101,102, 98, 99),
+    mk( 99,100, 96, 97),
+    mk( 97, 98, 96, 96.5),
+    mk( 96, 98, 91, 99),    // SWEEP — wick to 91, close 99
+    mk( 99,102, 98,101)
+  ];
+  const ym = [
+    mk(102,104,100,101),
+    mk(101,102, 98, 99),
+    mk( 99,100, 96, 97),
+    mk( 97, 98, 96, 96.5),
+    mk( 96, 98, 95.5,99),   // HELD at 95.5
+    mk( 99,101, 98,100)
+  ];
+  const { r1, r2, m1, m2 } = pairChart(ctx, w, h, nq, ym, LV, { levelName:'KEY LEVEL', nqTag:'NQ — sweeps', ymTag:'YM — holds' });
+
+  // SWEEP arrow on NQ (bar 4 wick goes below level)
+  const xs = r1.x + m1.slot * 4.5;
+  arrow(ctx, xs - 22, m1.py(LV), xs - 22, m1.py(91.5), C.sweep, 1.5);
+  label(ctx, xs - 26, m1.py(93.5), 'SWEEP', C.sweep, 'right', 10, 'bold');
+
+  // CLOSE BACK arrow
+  arrow(ctx, xs + 22, m1.py(91.5), xs + 22, m1.py(98), C.bull, 1.5);
+  label(ctx, xs + 26, m1.py(94.5), 'close back', C.bull, 'left', 10);
+
+  // SMT line on NQ — prior low (96) → current low (91)
+  line(ctx, r1.x + m1.slot*3.5, m1.py(96), r1.x + m1.slot*4.5, m1.py(91), C.bull, 2.5);
+  label(ctx, r1.x + m1.slot*4.5, m1.py(91) + 12, '▲ Bull SMT', C.bull, 'center', 11, 'bold');
+
+  // YM "HELD" annotation
+  line(ctx, r2.x + m2.slot*3.5, m2.py(96), r2.x + m2.slot*4.5, m2.py(95.5), C.bull, 2, [4,3]);
+  label(ctx, r2.x + m2.slot*4.5 + 6, m2.py(95.5) - 10, 'HELD ✓', C.bull, 'left', 10, 'bold');
+
+  // Big "VALID" stamp on right side
+  label(ctx, w - 84, h - 18, '✓ all 5 conditions met', C.bull, 'left', 11, 'bold');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 2A · BULL SMT @ PDL
+// ═══════════════════════════════════════════════════════════════════
+function renderBullPDL() {
+  const { ctx, w, h } = setup('bullPDL');
+  const PDL = 95;
+  const nq = [
+    mk(101,103,100,102),
+    mk(102,103, 99,100),
+    mk(100,101, 97, 98),
+    mk( 98, 99, 96, 96.5),
+    mk( 96.5,98, 92, 99),    // sweep
+    mk( 99,101, 98,100)
+  ];
+  const ym = [
+    mk(101,103,100,102),
+    mk(102,103, 99,100),
+    mk(100,101, 97, 98),
+    mk( 98, 99, 96, 96.5),
+    mk( 96.5,98, 96, 99),    // held
+    mk( 99,101, 98,100)
+  ];
+  const { r1, r2, m1, m2 } = pairChart(ctx, w, h, nq, ym, PDL, { levelName:'PDL' });
+
+  // sweep arrow on NQ
+  const xs = r1.x + m1.slot * 4.5;
+  arrow(ctx, xs - 18, m1.py(PDL), xs - 18, m1.py(92.5), C.sweep, 1.3);
+  label(ctx, xs - 22, m1.py(93.7), 'sweep', C.sweep, 'right', 9);
+
+  // SMT line
+  line(ctx, r1.x + m1.slot*3.5, m1.py(96), r1.x + m1.slot*4.5, m1.py(92), C.bull, 2);
+  label(ctx, r1.x + m1.slot*4.5 + 4, m1.py(92) + 10, '▲ Bull SMT', C.bull, 'left', 10, 'bold');
+  // held mark on YM
+  label(ctx, r2.x + m2.slot*4.5 + 4, m2.py(96) - 4, 'held ✓', C.bull, 'left', 9, 'bold');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 2B · BEAR SMT @ PDH
+// ═══════════════════════════════════════════════════════════════════
+function renderBearPDH() {
+  const { ctx, w, h } = setup('bearPDH');
+  const PDH = 105;
+  const nq = [
+    mk( 99, 97,100, 98),
+    mk( 98,101, 97,100),
+    mk(100,103, 99,102),
+    mk(102,104,101,103.5),
+    mk(103.5,108,102,101), // sweep above PDH, close back below
+    mk(101,102, 99,100)
+  ];
+  const ym = [
+    mk( 99, 97,100, 98),
+    mk( 98,101, 97,100),
+    mk(100,103, 99,102),
+    mk(102,104,101,103.5),
+    mk(103.5,104,102,101), // held below PDH
+    mk(101,102, 99,100)
+  ];
+  const { r1, r2, m1, m2 } = pairChart(ctx, w, h, nq, ym, PDH, { levelName:'PDH' });
+
+  const xs = r1.x + m1.slot * 4.5;
+  arrow(ctx, xs - 18, m1.py(PDH), xs - 18, m1.py(107.5), C.sweep, 1.3);
+  label(ctx, xs - 22, m1.py(106.3), 'sweep', C.sweep, 'right', 9);
+
+  line(ctx, r1.x + m1.slot*3.5, m1.py(104), r1.x + m1.slot*4.5, m1.py(108), C.bear, 2);
+  label(ctx, r1.x + m1.slot*4.5 + 4, m1.py(108) - 10, '▼ Bear SMT', C.bear, 'left', 10, 'bold');
+  label(ctx, r2.x + m2.slot*4.5 + 4, m2.py(104) + 4, 'held ✓', C.bear, 'left', 9, 'bold');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 3A · BULL SMT @ Equal Lows (EQL)
+// ═══════════════════════════════════════════════════════════════════
+function renderBullEQL() {
+  const { ctx, w, h } = setup('bullEQL');
+  const EQL_NQ = 95;
+  const EQL_YM = 96;
+  // NQ: bar 0 prints low at 95, bar 2 prints low at 95 again (EQL), bar 4 sweeps to 92
+  const nq = [
+    mk(100,102,95,98),
+    mk( 98, 99,96,97),
+    mk( 97, 98,95,97),
+    mk( 97, 98,96,96.5),
+    mk(96.5,98,92,99),     // sweep EQL
+    mk( 99,101,98,100)
+  ];
+  const ym = [
+    mk(100,102,96,98),
+    mk( 98, 99,97,97.5),
+    mk(97.5,98,96,97),
+    mk( 97, 98,96.5,97),
+    mk( 97, 98,96,99),     // held EQL
+    mk( 99,101,98,100)
+  ];
+  const { r1, r2, m1, m2 } = pairChart(ctx, w, h, nq, ym, EQL_NQ, { levelName:'EQL', ymLevel:EQL_YM });
+
+  // mark equal-low wicks with small "≡"
+  label(ctx, r1.x + m1.slot*0.5, m1.py(95) + 12, '≡', C.level, 'center', 14, 'bold');
+  label(ctx, r1.x + m1.slot*2.5, m1.py(95) + 12, '≡', C.level, 'center', 14, 'bold');
+
+  // sweep arrow on NQ
+  const xs = r1.x + m1.slot * 4.5;
+  arrow(ctx, xs - 16, m1.py(EQL_NQ), xs - 16, m1.py(92.5), C.sweep, 1.3);
+  label(ctx, xs - 20, m1.py(93.5), 'sweep', C.sweep, 'right', 9);
+
+  // SMT line
+  line(ctx, r1.x + m1.slot*2.5, m1.py(95), r1.x + m1.slot*4.5, m1.py(92), C.bull, 2);
+  label(ctx, r1.x + m1.slot*4.5 + 4, m1.py(92) + 10, '▲ Bull SMT', C.bull, 'left', 10, 'bold');
+  label(ctx, r2.x + m2.slot*4.5 + 4, m2.py(96) - 4, 'EQL held ✓', C.bull, 'left', 9, 'bold');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 3B · BEAR SMT @ Asia Session High
+// ═══════════════════════════════════════════════════════════════════
+function renderBearAsia() {
+  const { ctx, w, h } = setup('bearAsia');
+  const ASIA_HI_NQ = 102;
+  const ASIA_HI_YM = 102;
+  // First 2 bars = Asia (shaded), Asia high at 102. Then London/NY where one wicks above
+  const nq = [
+    mk( 99,101, 98,100),
+    mk(100,102, 99,101),    // asia high here
+    mk(101,102,100,101.5),
+    mk(101.5,102,100,101.8),
+    mk(101.8,105,101,99),   // SWEEP Asia high (wick to 105, close 99)
+    mk( 99,100, 97, 98)
+  ];
+  const ym = [
+    mk( 99,101, 98,100),
+    mk(100,102, 99,101),
+    mk(101,102,100,101.5),
+    mk(101.5,102,100,101.8),
+    mk(101.8,102,101,99),   // held below Asia high
+    mk( 99,100, 97, 98)
+  ];
+  const { r1, r2, m1, m2 } = pairChart(ctx, w, h, nq, ym, ASIA_HI_NQ, { levelName:'Asia HI', ymLevel:ASIA_HI_YM });
+
+  // Asia session shaded box (first 2 bars)
+  box(ctx, r1.x, r1.y, m1.slot * 2, r1.h, 'rgba(124,77,255,0.10)');
+  box(ctx, r2.x, r2.y, m2.slot * 2, r2.h, 'rgba(124,77,255,0.10)');
+  label(ctx, r1.x + m1.slot, r1.y + 10, 'ASIA', C.asia, 'center', 10, 'bold');
+  label(ctx, r2.x + m2.slot, r2.y + 10, 'ASIA', C.asia, 'center', 10, 'bold');
+
+  // sweep arrow on NQ
+  const xs = r1.x + m1.slot * 4.5;
+  arrow(ctx, xs - 16, m1.py(ASIA_HI_NQ), xs - 16, m1.py(104.5), C.sweep, 1.3);
+  label(ctx, xs - 20, m1.py(103.5), 'sweep', C.sweep, 'right', 9);
+
+  // SMT line
+  line(ctx, r1.x + m1.slot*1.5, m1.py(102), r1.x + m1.slot*4.5, m1.py(105), C.bear, 2);
+  label(ctx, r1.x + m1.slot*4.5 + 4, m1.py(105) - 10, '▼ Bear SMT', C.bear, 'left', 10, 'bold');
+  label(ctx, r2.x + m2.slot*4.5 + 4, m2.py(102) + 4, 'held ✓', C.bear, 'left', 9, 'bold');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 4A · INVALID — both sweep
+// ═══════════════════════════════════════════════════════════════════
+function renderInvBoth() {
+  const { ctx, w, h } = setup('invBoth');
+  const PDL = 95;
+  const nq = [
+    mk(101,102,100,101),
+    mk(101,101, 98, 99),
+    mk( 99,100, 97, 98),
+    mk( 98, 98, 96, 96.5),
+    mk( 96.5,97,92, 93),   // both sweep & close below
+    mk( 93, 94, 90, 91)
+  ];
+  const ym = [
+    mk(101,102,100,101),
+    mk(101,101, 98, 99),
+    mk( 99,100, 97, 98),
+    mk( 98, 98, 96, 96.5),
+    mk( 96.5,97,92, 93),   // both sweep & close below
+    mk( 93, 94, 90, 91)
+  ];
+  const { r1, r2, m1, m2 } = pairChart(ctx, w, h, nq, ym, PDL, { levelName:'PDL' });
+
+  // mark sweeps on both
+  [r1, r2].forEach((r, i) => {
+    const m = i === 0 ? m1 : m2;
+    const xs = r.x + m.slot * 4.5;
+    arrow(ctx, xs - 14, m.py(PDL), xs - 14, m.py(92.5), C.sweep, 1.3);
+    label(ctx, xs - 18, m.py(93.5), 'swept', C.sweep, 'right', 9);
+  });
+  label(ctx, w/2, h - 14, '✗ Both took the liquidity — no divergence', C.bear, 'center', 11, 'bold');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 4B · INVALID — sweep + close through
+// ═══════════════════════════════════════════════════════════════════
+function renderInvThrough() {
+  const { ctx, w, h } = setup('invThrough');
+  const PDL = 95;
+  const nq = [
+    mk(101,102,100,101),
+    mk(101,101, 98, 99),
+    mk( 99,100, 97, 98),
+    mk( 98, 98, 96, 96.5),
+    mk( 96.5,97,90, 91),   // sweep AND close below (close 91 < PDL 95)
+    mk( 91, 92, 88, 89)
+  ];
+  const ym = [
+    mk(101,102,100,101),
+    mk(101,101, 98, 99),
+    mk( 99,100, 97, 98),
+    mk( 98, 98, 96, 96.5),
+    mk( 96.5,98, 96, 99),  // held above
+    mk( 99,101, 98,100)
+  ];
+  const { r1, r2, m1, m2 } = pairChart(ctx, w, h, nq, ym, PDL, { levelName:'PDL' });
+
+  // arrow showing close THROUGH the level
+  const xs = r1.x + m1.slot * 4.5;
+  arrow(ctx, xs - 16, m1.py(PDL), xs - 16, m1.py(91.5), C.sweep, 1.3);
+  label(ctx, xs - 20, m1.py(93.5), 'sweep', C.sweep, 'right', 9);
+  // big down arrow showing close-through
+  arrow(ctx, xs + 16, m1.py(96), xs + 16, m1.py(90.5), C.bear, 1.8);
+  label(ctx, xs + 20, m1.py(93), 'close THROUGH', C.bear, 'left', 9, 'bold');
+
+  label(ctx, w/2, h - 14, '✗ Continuation, not reversal', C.bear, 'center', 11, 'bold');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 4C · INVALID — misaligned timing
+// ═══════════════════════════════════════════════════════════════════
+function renderInvTime() {
+  const { ctx, w, h } = setup('invTime');
+  const PDL = 95;
+  // NQ swept on bar 1 (early); YM swept on bar 4 (now). Different events.
+  const nq = [
+    mk(102,103, 92,100),   // EARLY sweep on NQ (low 92)
+    mk(100,101, 99,100),
+    mk(100,101, 99,100),
+    mk(100,101, 98, 99),
+    mk( 99,100, 96, 97),   // currently fine, no sweep
+    mk( 97, 98, 96, 97)
+  ];
+  const ym = [
+    mk(102,103,100,101),
+    mk(101,102, 99,100),
+    mk(100,101, 98, 99),
+    mk( 99,100, 97, 98),
+    mk( 98, 99, 92, 99),   // sweep PDL NOW
+    mk( 99,100, 97, 98)
+  ];
+  const { r1, r2, m1, m2 } = pairChart(ctx, w, h, nq, ym, PDL, { levelName:'PDL' });
+
+  // mark NQ early sweep
+  arrow(ctx, r1.x + m1.slot*0.5 - 14, m1.py(PDL), r1.x + m1.slot*0.5 - 14, m1.py(92.5), C.sweep, 1.3);
+  label(ctx, r1.x + m1.slot*0.5, m1.py(92) + 10, 'swept earlier', C.sweep, 'center', 9);
+
+  // mark YM late sweep
+  arrow(ctx, r2.x + m2.slot*4.5 - 14, m2.py(PDL), r2.x + m2.slot*4.5 - 14, m2.py(92.5), C.sweep, 1.3);
+  label(ctx, r2.x + m2.slot*4.5, m2.py(92) + 10, 'sweeping now', C.sweep, 'center', 9);
+
+  label(ctx, w/2, h - 14, '✗ Not synchronized — different events', C.bear, 'center', 11, 'bold');
+}
+
+// ─── run all ────────────────────────────────────────────────────────
+function renderAll() {
+  renderConcept();
+  renderBullPDL();
+  renderBearPDH();
+  renderBullEQL();
+  renderBearAsia();
+  renderInvBoth();
+  renderInvThrough();
+  renderInvTime();
+}
+window.addEventListener('load', renderAll);
+let resizeT = null;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeT);
+  resizeT = setTimeout(renderAll, 150);
+});
+</script>
+
+</body>
+</html>
