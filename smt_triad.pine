@@ -1,0 +1,268 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © aitorich
+// SMT Triad — Key Level Hunter
+//
+// Detects SMT (Smart Money Technique) divergences between a correlated pair (NQ vs YM by default)
+// at three key liquidity-level types:
+//   1. PDH / PDL          — previous-day high/low (refreshed daily)
+//   2. Swing High / Low    — fractal pivots (configurable left/right bars)
+//   3. FVG (Fair Value Gap) — most-recent unfilled bullish + bearish 3-candle gap
+//
+// On a valid SMT (XOR sweep between the pair), draws a solid wick-to-wick line
+// on the chart symbol from the level's anchor bar to the current bar's wick.
+//   Bullish SMT line: green (default #00e676)
+//   Bearish SMT line: red   (default #ff1744)
+
+//@version=6
+indicator("SMT Triad — Key Level Hunter", "SMT Triad", overlay=true,
+     max_lines_count=500, max_labels_count=100, max_boxes_count=100)
+
+// ─── INPUTS ──────────────────────────────────────────────────────────
+gS  = "Symbols"
+gL  = "Levels"
+gV  = "Validation"
+gD  = "Display"
+gSt = "Style"
+
+string symB = input.symbol("YM1!", "Symbol B (correlated pair)", group=gS)
+
+bool   showPDHL    = input.bool(true,  "Enable PDH / PDL",        group=gL)
+bool   showSwing   = input.bool(true,  "Enable Swing High / Low", group=gL)
+bool   showFVG     = input.bool(true,  "Enable FVG",              group=gL)
+int    swingL      = input.int(3, "Swing Pivot Left",  minval=1, group=gL)
+int    swingR      = input.int(3, "Swing Pivot Right", minval=1, group=gL)
+float  fvgMinPct   = input.float(0.0, "FVG Min Size (% of price)", minval=0.0, step=0.05, group=gL)
+int    divLookback = input.int(5, "FVG Divergence Lookback (bars)", minval=2, maxval=20, group=gL)
+
+bool   requireCloseBack = input.bool(true, "Require close back inside level (C2 closure)", group=gV)
+
+int    displayDays = input.int(3, "Show Last N Days", minval=1, group=gD)
+
+color  bullClr   = input.color(color.new(#00e676, 0),  "Bull SMT Color",   group=gSt)
+color  bearClr   = input.color(color.new(#ff1744, 0),  "Bear SMT Color",   group=gSt)
+color  levelClr  = input.color(color.new(#ffb74d, 30), "Level Line Color", group=gSt)
+color  fvgFill   = input.color(color.new(#ffb74d, 85), "FVG Box Fill",     group=gSt)
+int    smtWidth  = input.int(2, "SMT Line Width", minval=1, maxval=5, group=gSt)
+bool   showLines = input.bool(true, "Show level lines", group=gSt)
+bool   showBoxes = input.bool(true, "Show FVG boxes",   group=gSt)
+
+// ─── DATA (Symbol B) ─────────────────────────────────────────────────
+[bH, bL, bO, bC] = request.security(symB, timeframe.period, [high, low, open, close], lookahead=barmerge.lookahead_off)
+
+// ─── DISPLAY FILTER ──────────────────────────────────────────────────
+int tfSec = timeframe.in_seconds(timeframe.period)
+int barsPerDay = math.max(1, int(86400.0 / math.max(tfSec, 1)))
+int lookbackBars = displayDays * barsPerDay
+bool inDisplay = bar_index >= last_bar_index - lookbackBars
+
+// ════════════════════════════════════════════════════════════════════
+// 1 · PDH / PDL
+// ════════════════════════════════════════════════════════════════════
+[aPDH_d, aPDL_d] = request.security(syminfo.tickerid, "D", [high[1], low[1]], lookahead=barmerge.lookahead_off)
+[bPDH_d, bPDL_d] = request.security(symB, "D", [high[1], low[1]], lookahead=barmerge.lookahead_off)
+
+bool isNewDay = ta.change(time("D")) != 0
+
+var float aPDH = na, var float aPDL = na
+var float bPDH = na, var float bPDL = na
+var int   pdAnchorBar = na
+var bool  pdhDone = false, var bool pdlDone = false
+var line  pdhLineV = na,   var line pdlLineV = na
+
+if isNewDay
+    line.delete(pdhLineV)
+    line.delete(pdlLineV)
+    aPDH := aPDH_d
+    aPDL := aPDL_d
+    bPDH := bPDH_d
+    bPDL := bPDL_d
+    pdAnchorBar := bar_index - 1
+    pdhDone := false
+    pdlDone := false
+    if showLines and showPDHL and not na(aPDH)
+        pdhLineV := line.new(pdAnchorBar, aPDH, bar_index, aPDH, color=levelClr, style=line.style_dashed, width=1)
+    if showLines and showPDHL and not na(aPDL)
+        pdlLineV := line.new(pdAnchorBar, aPDL, bar_index, aPDL, color=levelClr, style=line.style_dashed, width=1)
+
+if not na(pdhLineV) and not pdhDone
+    line.set_x2(pdhLineV, bar_index)
+if not na(pdlLineV) and not pdlDone
+    line.set_x2(pdlLineV, bar_index)
+
+bool aSwept_PDH = showPDHL and not na(aPDH) and not pdhDone and high > aPDH and (not requireCloseBack or close < aPDH)
+bool aSwept_PDL = showPDHL and not na(aPDL) and not pdlDone and low  < aPDL and (not requireCloseBack or close > aPDL)
+bool bSwept_PDH = showPDHL and not na(bPDH) and bH > bPDH and (not requireCloseBack or bC < bPDH)
+bool bSwept_PDL = showPDHL and not na(bPDL) and bL < bPDL and (not requireCloseBack or bC > bPDL)
+
+bool bearSMT_PDH = ((aSwept_PDH and not bSwept_PDH) or (bSwept_PDH and not aSwept_PDH)) and not pdhDone
+bool bullSMT_PDL = ((aSwept_PDL and not bSwept_PDL) or (bSwept_PDL and not aSwept_PDL)) and not pdlDone
+
+if bearSMT_PDH and inDisplay
+    line.new(pdAnchorBar, aPDH, bar_index, high, color=bearClr, width=smtWidth, style=line.style_solid)
+    pdhDone := true
+if bullSMT_PDL and inDisplay
+    line.new(pdAnchorBar, aPDL, bar_index, low, color=bullClr, width=smtWidth, style=line.style_solid)
+    pdlDone := true
+
+if showPDHL and aSwept_PDH and bSwept_PDH
+    pdhDone := true
+if showPDHL and aSwept_PDL and bSwept_PDL
+    pdlDone := true
+
+// ════════════════════════════════════════════════════════════════════
+// 2 · SWING HIGH / LOW
+// ════════════════════════════════════════════════════════════════════
+float aSwHi_raw = ta.pivothigh(high, swingL, swingR)
+float aSwLo_raw = ta.pivotlow(low,  swingL, swingR)
+[bSwHi_raw, bSwLo_raw] = request.security(symB, timeframe.period,
+     [ta.pivothigh(high, swingL, swingR), ta.pivotlow(low, swingL, swingR)],
+     lookahead=barmerge.lookahead_off)
+
+var float aSwH = na, var int aSwHBar = na, var bool swHDone = false
+var float aSwL = na, var int aSwLBar = na, var bool swLDone = false
+var float bSwH = na, var float bSwL = na
+var line  swHLineV = na, var line swLLineV = na
+
+if not na(aSwHi_raw)
+    line.delete(swHLineV)
+    aSwH := aSwHi_raw
+    aSwHBar := bar_index - swingR
+    swHDone := false
+    if showLines and showSwing
+        swHLineV := line.new(aSwHBar, aSwH, bar_index, aSwH, color=levelClr, style=line.style_dashed, width=1)
+if not na(aSwLo_raw)
+    line.delete(swLLineV)
+    aSwL := aSwLo_raw
+    aSwLBar := bar_index - swingR
+    swLDone := false
+    if showLines and showSwing
+        swLLineV := line.new(aSwLBar, aSwL, bar_index, aSwL, color=levelClr, style=line.style_dashed, width=1)
+
+if not na(bSwHi_raw)
+    bSwH := bSwHi_raw
+if not na(bSwLo_raw)
+    bSwL := bSwLo_raw
+
+if not na(swHLineV) and not swHDone
+    line.set_x2(swHLineV, bar_index)
+if not na(swLLineV) and not swLDone
+    line.set_x2(swLLineV, bar_index)
+
+bool aSwept_SwH = showSwing and not na(aSwH) and not swHDone and high > aSwH and (not requireCloseBack or close < aSwH)
+bool aSwept_SwL = showSwing and not na(aSwL) and not swLDone and low  < aSwL and (not requireCloseBack or close > aSwL)
+bool bSwept_SwH = showSwing and not na(bSwH) and bH > bSwH and (not requireCloseBack or bC < bSwH)
+bool bSwept_SwL = showSwing and not na(bSwL) and bL < bSwL and (not requireCloseBack or bC > bSwL)
+
+bool bearSMT_SwH = ((aSwept_SwH and not bSwept_SwH) or (bSwept_SwH and not aSwept_SwH)) and not swHDone
+bool bullSMT_SwL = ((aSwept_SwL and not bSwept_SwL) or (bSwept_SwL and not aSwept_SwL)) and not swLDone
+
+if bearSMT_SwH and inDisplay
+    line.new(aSwHBar, aSwH, bar_index, high, color=bearClr, width=smtWidth, style=line.style_solid)
+    swHDone := true
+if bullSMT_SwL and inDisplay
+    line.new(aSwLBar, aSwL, bar_index, low, color=bullClr, width=smtWidth, style=line.style_solid)
+    swLDone := true
+
+if showSwing and aSwept_SwH and bSwept_SwH
+    swHDone := true
+if showSwing and aSwept_SwL and bSwept_SwL
+    swLDone := true
+
+// ════════════════════════════════════════════════════════════════════
+// 3 · FVG
+// ════════════════════════════════════════════════════════════════════
+float fvgMinSizeA = fvgMinPct / 100.0 * close
+float fvgMinSizeB = fvgMinPct / 100.0 * bC
+
+bool aBullFVG_form = showFVG and high[2] < low and (low - high[2]) >= fvgMinSizeA
+bool aBearFVG_form = showFVG and low[2]  > high and (low[2] - high) >= fvgMinSizeA
+bool bBullFVG_form = showFVG and bH[2] < bL and (bL - bH[2]) >= fvgMinSizeB
+bool bBearFVG_form = showFVG and bL[2] > bH and (bL[2] - bH) >= fvgMinSizeB
+
+var float aFVGBullTop = na, var float aFVGBullBot = na, var int aFVGBullBar = na, var bool aFVGBullDone = false
+var float aFVGBearTop = na, var float aFVGBearBot = na, var int aFVGBearBar = na, var bool aFVGBearDone = false
+var float bFVGBullBot = na, var bool bFVGBullDone = false
+var float bFVGBearTop = na, var bool bFVGBearDone = false
+var box   aFVGBullBox = na, var box aFVGBearBox = na
+
+if aBullFVG_form
+    box.delete(aFVGBullBox)
+    aFVGBullTop := low
+    aFVGBullBot := high[2]
+    aFVGBullBar := bar_index - 2
+    aFVGBullDone := false
+    if showBoxes and showFVG
+        aFVGBullBox := box.new(aFVGBullBar, aFVGBullTop, bar_index, aFVGBullBot,
+             bgcolor=fvgFill, border_color=color.new(levelClr, 50), border_width=1)
+if aBearFVG_form
+    box.delete(aFVGBearBox)
+    aFVGBearTop := low[2]
+    aFVGBearBot := high
+    aFVGBearBar := bar_index - 2
+    aFVGBearDone := false
+    if showBoxes and showFVG
+        aFVGBearBox := box.new(aFVGBearBar, aFVGBearTop, bar_index, aFVGBearBot,
+             bgcolor=fvgFill, border_color=color.new(levelClr, 50), border_width=1)
+
+if bBullFVG_form
+    bFVGBullBot := bH[2]
+    bFVGBullDone := false
+if bBearFVG_form
+    bFVGBearTop := bL[2]
+    bFVGBearDone := false
+
+if not na(aFVGBullBox) and not aFVGBullDone
+    box.set_right(aFVGBullBox, bar_index)
+if not na(aFVGBearBox) and not aFVGBearDone
+    box.set_right(aFVGBearBox, bar_index)
+
+bool aSwept_FVGBull = showFVG and not na(aFVGBullBot) and not aFVGBullDone and low  < aFVGBullBot and (not requireCloseBack or close > aFVGBullBot)
+bool aSwept_FVGBear = showFVG and not na(aFVGBearBot) and not aFVGBearDone and high > aFVGBearBot and (not requireCloseBack or close < aFVGBearBot)
+bool bSwept_FVGBull = showFVG and not na(bFVGBullBot) and not bFVGBullDone and bL  < bFVGBullBot and (not requireCloseBack or bC > bFVGBullBot)
+bool bSwept_FVGBear = showFVG and not na(bFVGBearTop) and not bFVGBearDone and bH  > bFVGBearTop and (not requireCloseBack or bC < bFVGBearTop)
+
+float bPriorLo = ta.lowest(bL,  divLookback)[1]
+float bPriorHi = ta.highest(bH, divLookback)[1]
+float aPriorLo = ta.lowest(low, divLookback)[1]
+float aPriorHi = ta.highest(high, divLookback)[1]
+bool  bMadeNewLo = bL < bPriorLo
+bool  bMadeNewHi = bH > bPriorHi
+bool  aMadeNewLo = low < aPriorLo
+bool  aMadeNewHi = high > aPriorHi
+
+bool bullSMT_FVG_fromA = aSwept_FVGBull and not bMadeNewLo and not aFVGBullDone
+bool bearSMT_FVG_fromA = aSwept_FVGBear and not bMadeNewHi and not aFVGBearDone
+bool bullSMT_FVG_fromB = bSwept_FVGBull and not aMadeNewLo and not bFVGBullDone
+bool bearSMT_FVG_fromB = bSwept_FVGBear and not aMadeNewHi and not bFVGBearDone
+
+if bullSMT_FVG_fromA and inDisplay
+    line.new(aFVGBullBar, aFVGBullBot, bar_index, low, color=bullClr, width=smtWidth, style=line.style_solid)
+    aFVGBullDone := true
+if bearSMT_FVG_fromA and inDisplay
+    line.new(aFVGBearBar, aFVGBearBot, bar_index, high, color=bearClr, width=smtWidth, style=line.style_solid)
+    aFVGBearDone := true
+if bullSMT_FVG_fromB and inDisplay
+    int anchorB = math.max(0, bar_index - divLookback)
+    line.new(anchorB, aPriorLo, bar_index, low, color=bullClr, width=smtWidth, style=line.style_solid)
+    bFVGBullDone := true
+if bearSMT_FVG_fromB and inDisplay
+    int anchorB = math.max(0, bar_index - divLookback)
+    line.new(anchorB, aPriorHi, bar_index, high, color=bearClr, width=smtWidth, style=line.style_solid)
+    bFVGBearDone := true
+
+if showFVG and aSwept_FVGBull and bSwept_FVGBull
+    aFVGBullDone := true
+    bFVGBullDone := true
+if showFVG and aSwept_FVGBear and bSwept_FVGBear
+    aFVGBearDone := true
+    bFVGBearDone := true
+
+// ════════════════════════════════════════════════════════════════════
+// ALERTS
+// ════════════════════════════════════════════════════════════════════
+alertcondition(bullSMT_PDL,                              title="Bull SMT @ PDL",        message="Bull SMT @ PDL on {{ticker}}")
+alertcondition(bearSMT_PDH,                              title="Bear SMT @ PDH",        message="Bear SMT @ PDH on {{ticker}}")
+alertcondition(bullSMT_SwL,                              title="Bull SMT @ Swing Low",  message="Bull SMT @ Swing Low on {{ticker}}")
+alertcondition(bearSMT_SwH,                              title="Bear SMT @ Swing High", message="Bear SMT @ Swing High on {{ticker}}")
+alertcondition(bullSMT_FVG_fromA or bullSMT_FVG_fromB,   title="Bull SMT @ FVG",        message="Bull SMT @ FVG on {{ticker}}")
+alertcondition(bearSMT_FVG_fromA or bearSMT_FVG_fromB,   title="Bear SMT @ FVG",        message="Bear SMT @ FVG on {{ticker}}")
