@@ -1,29 +1,29 @@
 // This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
 // © aitorich
-// SMT Triad — Key Level Hunter
+// SMT Swing — C2 / C3 Hunter
 //
-// Detects SMT (Smart Money Technique) divergences between a correlated pair (NQ vs YM by default)
-// at three key liquidity-level types:
-//   1. PDH / PDL          — previous-day high/low (refreshed daily)
-//   2. Swing High / Low    — fractal pivots (configurable left/right bars)
-//   3. FVG (Fair Value Gap) — most-recent unfilled bullish + bearish 3-candle gap
+// Pair-symmetric SMT detector for swing-pivot liquidity (NQ vs YM by default).
+// On each chart, fires only when THIS chart's symbol is the sweeping side, so every
+// SMT line anchors at the pivot price and extends to a wick BEYOND the level.
 //
-// On a valid SMT (XOR sweep between the pair), draws a solid wick-to-wick line
-// on the chart symbol from the level's anchor bar to the current bar's wick.
-//   Bullish SMT line: green (default #00e676)
-//   Bearish SMT line: red   (default #ff1744)
+// Two triggers per pivot:
+//   1. C2 SMT     — single-bar: the bar that sweeps the pivot + (optional) closes
+//                   back inside, while the OTHER pair member's same bar does NOT
+//                   wick beyond its own pivot. Most SMTs occur here.
+//   2. 2-bar SMT  — the C3 bar (immediately after C2) extends the move deeper on
+//                   THIS chart while the OTHER pair member's combined C2+C3 window
+//                   stays inside its own pivot. Fires on C3.
 //
-// PAIR-SYMMETRIC: add this indicator to BOTH charts (NQ and YM). It auto-detects
-// which side of the pair the chart represents and draws the SMT lines locally on
-// each chart's own price coordinates.
+// PAIR-SYMMETRIC: add to BOTH NQ and YM charts. Auto-detects which side via
+// syminfo.ticker and requests the OTHER symbol via security().
 
 //@version=6
-indicator("SMT Triad — Key Level Hunter", "SMT Triad", overlay=true,
-     max_lines_count=500, max_labels_count=100, max_boxes_count=100)
+indicator("SMT Swing — C2 / C3 Hunter", "SMT Swing", overlay=true,
+     max_lines_count=500, max_labels_count=100)
 
 // ─── INPUTS ──────────────────────────────────────────────────────────
 gS  = "Symbols"
-gL  = "Levels"
+gT  = "Triggers"
 gV  = "Validation"
 gD  = "Display"
 gSt = "Style"
@@ -31,30 +31,25 @@ gSt = "Style"
 string symA = input.symbol("NQ1!", "Pair Symbol A", group=gS)
 string symB = input.symbol("YM1!", "Pair Symbol B", group=gS)
 
-// Auto-detect which side of the pair this chart represents — the OTHER symbol
-// is what we request via security(). Works whether you load the indicator on
-// NQ or on YM, so the same script paints both charts.
+// Auto-detect: if chart's ticker matches symA, the OTHER side is symB. Otherwise
+// chart is on the B-side and we request symA. Same script paints both charts.
 string otherSym = str.contains(symA, syminfo.ticker) ? symB : symA
 
-bool   showPDHL    = input.bool(true,  "Enable PDH / PDL",        group=gL)
-bool   showSwing   = input.bool(true,  "Enable Swing High / Low", group=gL)
-bool   showFVG     = input.bool(true,  "Enable FVG",              group=gL)
-int    swingL      = input.int(3, "Swing Pivot Left",  minval=1, group=gL)
-int    swingR      = input.int(3, "Swing Pivot Right", minval=1, group=gL)
-float  fvgMinPct   = input.float(0.0, "FVG Min Size (% of price)", minval=0.0, step=0.05, group=gL)
-int    divLookback = input.int(5, "FVG Divergence Lookback (bars)", minval=2, maxval=20, group=gL)
+bool   showC2     = input.bool(true, "Show C2 SMT (single-bar)",   group=gT)
+bool   show2Bar   = input.bool(true, "Show 2-bar SMT (C2 + C3)",   group=gT)
+int    swingL     = input.int(3, "Swing Pivot Left",  minval=1, group=gT)
+int    swingR     = input.int(3, "Swing Pivot Right", minval=1, group=gT)
 
 bool   requireCloseBack = input.bool(true, "Require close back inside level (C2 closure)", group=gV)
 
 int    displayDays = input.int(3, "Show Last N Days", minval=1, group=gD)
 
-color  bullClr   = input.color(color.new(#00e676, 0),  "Bull SMT Color",   group=gSt)
-color  bearClr   = input.color(color.new(#ff1744, 0),  "Bear SMT Color",   group=gSt)
-color  levelClr  = input.color(color.new(#ffb74d, 30), "Level Line Color", group=gSt)
-color  fvgFill   = input.color(color.new(#ffb74d, 85), "FVG Box Fill",     group=gSt)
-int    smtWidth  = input.int(2, "SMT Line Width", minval=1, maxval=5, group=gSt)
-bool   showLines = input.bool(true, "Show level lines", group=gSt)
-bool   showBoxes = input.bool(true, "Show FVG boxes",   group=gSt)
+color  bullClr     = input.color(color.new(#00e676, 0),  "Bull SMT Color",   group=gSt)
+color  bearClr     = input.color(color.new(#ff1744, 0),  "Bear SMT Color",   group=gSt)
+color  levelClr    = input.color(color.new(#ffb74d, 30), "Pivot Line Color", group=gSt)
+int    c2Width     = input.int(2, "C2 SMT Width",    minval=1, maxval=5, group=gSt)
+int    twoBarWidth = input.int(2, "2-bar SMT Width", minval=1, maxval=5, group=gSt)
+bool   showLines   = input.bool(true, "Show pivot lines", group=gSt)
 
 // ─── DATA (the OTHER pair member) ────────────────────────────────────
 [bH, bL, bO, bC] = request.security(otherSym, timeframe.period, [high, low, open, close], lookahead=barmerge.lookahead_off)
@@ -66,61 +61,7 @@ int lookbackBars = displayDays * barsPerDay
 bool inDisplay = bar_index >= last_bar_index - lookbackBars
 
 // ════════════════════════════════════════════════════════════════════
-// 1 · PDH / PDL
-// ════════════════════════════════════════════════════════════════════
-[aPDH_d, aPDL_d] = request.security(syminfo.tickerid, "D", [high[1], low[1]], lookahead=barmerge.lookahead_off)
-[bPDH_d, bPDL_d] = request.security(otherSym, "D", [high[1], low[1]], lookahead=barmerge.lookahead_off)
-
-bool isNewDay = ta.change(time("D")) != 0
-
-var float aPDH = na, var float aPDL = na
-var float bPDH = na, var float bPDL = na
-var int   pdAnchorBar = na
-var bool  pdhDone = false, var bool pdlDone = false
-var line  pdhLineV = na,   var line pdlLineV = na
-
-if isNewDay
-    line.delete(pdhLineV)
-    line.delete(pdlLineV)
-    aPDH := aPDH_d
-    aPDL := aPDL_d
-    bPDH := bPDH_d
-    bPDL := bPDL_d
-    pdAnchorBar := bar_index - 1
-    pdhDone := false
-    pdlDone := false
-    if showLines and showPDHL and not na(aPDH)
-        pdhLineV := line.new(pdAnchorBar, aPDH, bar_index, aPDH, color=levelClr, style=line.style_dashed, width=1)
-    if showLines and showPDHL and not na(aPDL)
-        pdlLineV := line.new(pdAnchorBar, aPDL, bar_index, aPDL, color=levelClr, style=line.style_dashed, width=1)
-
-if not na(pdhLineV) and not pdhDone
-    line.set_x2(pdhLineV, bar_index)
-if not na(pdlLineV) and not pdlDone
-    line.set_x2(pdlLineV, bar_index)
-
-bool aSwept_PDH = showPDHL and not na(aPDH) and not pdhDone and high > aPDH and (not requireCloseBack or close < aPDH)
-bool aSwept_PDL = showPDHL and not na(aPDL) and not pdlDone and low  < aPDL and (not requireCloseBack or close > aPDL)
-bool bSwept_PDH = showPDHL and not na(bPDH) and bH > bPDH and (not requireCloseBack or bC < bPDH)
-bool bSwept_PDL = showPDHL and not na(bPDL) and bL < bPDL and (not requireCloseBack or bC > bPDL)
-
-bool bearSMT_PDH = ((aSwept_PDH and not bSwept_PDH) or (bSwept_PDH and not aSwept_PDH)) and not pdhDone
-bool bullSMT_PDL = ((aSwept_PDL and not bSwept_PDL) or (bSwept_PDL and not aSwept_PDL)) and not pdlDone
-
-if bearSMT_PDH and inDisplay
-    line.new(pdAnchorBar, aPDH, bar_index, high, color=bearClr, width=smtWidth, style=line.style_solid)
-    pdhDone := true
-if bullSMT_PDL and inDisplay
-    line.new(pdAnchorBar, aPDL, bar_index, low, color=bullClr, width=smtWidth, style=line.style_solid)
-    pdlDone := true
-
-if showPDHL and aSwept_PDH and bSwept_PDH
-    pdhDone := true
-if showPDHL and aSwept_PDL and bSwept_PDL
-    pdlDone := true
-
-// ════════════════════════════════════════════════════════════════════
-// 2 · SWING HIGH / LOW
+// PIVOT DETECTION (chart + other)
 // ════════════════════════════════════════════════════════════════════
 float aSwHi_raw = ta.pivothigh(high, swingL, swingR)
 float aSwLo_raw = ta.pivotlow(low,  swingL, swingR)
@@ -128,151 +69,120 @@ float aSwLo_raw = ta.pivotlow(low,  swingL, swingR)
      [ta.pivothigh(high, swingL, swingR), ta.pivotlow(low, swingL, swingR)],
      lookahead=barmerge.lookahead_off)
 
-var float aSwH = na, var int aSwHBar = na, var bool swHDone = false
-var float aSwL = na, var int aSwLBar = na, var bool swLDone = false
-var float bSwH = na, var float bSwL = na
-var line  swHLineV = na, var line swLLineV = na
+// ─── SWING LOW STATE (bull SMT) ──────────────────────────────────────
+var float aSwL = na
+var int   aSwLBar = na
+var int   aSwL_phase = 0           // 0=waiting C2, 1=waiting C3, 2=done
+var float aSwL_C2_aLow = na
+var float aSwL_C2_bLow = na
+var line  swLLineV = na
+
+// ─── SWING HIGH STATE (bear SMT) ─────────────────────────────────────
+var float aSwH = na
+var int   aSwHBar = na
+var int   aSwH_phase = 0
+var float aSwH_C2_aHigh = na
+var float aSwH_C2_bHigh = na
+var line  swHLineV = na
+
+// ─── OTHER pair member's most-recent confirmed pivots ────────────────
+var float bSwH = na
+var float bSwL = na
+
+// new pivot on chart → reset state for that side
+if not na(aSwLo_raw)
+    line.delete(swLLineV)
+    aSwL := aSwLo_raw
+    aSwLBar := bar_index - swingR
+    aSwL_phase := 0
+    aSwL_C2_aLow := na
+    aSwL_C2_bLow := na
+    if showLines
+        swLLineV := line.new(aSwLBar, aSwL, bar_index, aSwL, color=levelClr, style=line.style_dashed, width=1)
 
 if not na(aSwHi_raw)
     line.delete(swHLineV)
     aSwH := aSwHi_raw
     aSwHBar := bar_index - swingR
-    swHDone := false
-    if showLines and showSwing
+    aSwH_phase := 0
+    aSwH_C2_aHigh := na
+    aSwH_C2_bHigh := na
+    if showLines
         swHLineV := line.new(aSwHBar, aSwH, bar_index, aSwH, color=levelClr, style=line.style_dashed, width=1)
-if not na(aSwLo_raw)
-    line.delete(swLLineV)
-    aSwL := aSwLo_raw
-    aSwLBar := bar_index - swingR
-    swLDone := false
-    if showLines and showSwing
-        swLLineV := line.new(aSwLBar, aSwL, bar_index, aSwL, color=levelClr, style=line.style_dashed, width=1)
 
 if not na(bSwHi_raw)
     bSwH := bSwHi_raw
 if not na(bSwLo_raw)
     bSwL := bSwLo_raw
 
-if not na(swHLineV) and not swHDone
-    line.set_x2(swHLineV, bar_index)
-if not na(swLLineV) and not swLDone
+if not na(swLLineV) and aSwL_phase != 2
     line.set_x2(swLLineV, bar_index)
-
-bool aSwept_SwH = showSwing and not na(aSwH) and not swHDone and high > aSwH and (not requireCloseBack or close < aSwH)
-bool aSwept_SwL = showSwing and not na(aSwL) and not swLDone and low  < aSwL and (not requireCloseBack or close > aSwL)
-bool bSwept_SwH = showSwing and not na(bSwH) and bH > bSwH and (not requireCloseBack or bC < bSwH)
-bool bSwept_SwL = showSwing and not na(bSwL) and bL < bSwL and (not requireCloseBack or bC > bSwL)
-
-bool bearSMT_SwH = ((aSwept_SwH and not bSwept_SwH) or (bSwept_SwH and not aSwept_SwH)) and not swHDone
-bool bullSMT_SwL = ((aSwept_SwL and not bSwept_SwL) or (bSwept_SwL and not aSwept_SwL)) and not swLDone
-
-if bearSMT_SwH and inDisplay
-    line.new(aSwHBar, aSwH, bar_index, high, color=bearClr, width=smtWidth, style=line.style_solid)
-    swHDone := true
-if bullSMT_SwL and inDisplay
-    line.new(aSwLBar, aSwL, bar_index, low, color=bullClr, width=smtWidth, style=line.style_solid)
-    swLDone := true
-
-if showSwing and aSwept_SwH and bSwept_SwH
-    swHDone := true
-if showSwing and aSwept_SwL and bSwept_SwL
-    swLDone := true
+if not na(swHLineV) and aSwH_phase != 2
+    line.set_x2(swHLineV, bar_index)
 
 // ════════════════════════════════════════════════════════════════════
-// 3 · FVG
+// SWING LOW — bull SMT (C2 + 2-bar)
 // ════════════════════════════════════════════════════════════════════
-float fvgMinSizeA = fvgMinPct / 100.0 * close
-float fvgMinSizeB = fvgMinPct / 100.0 * bC
+bool c2BullFire     = false
+bool twoBarBullFire = false
 
-bool aBullFVG_form = showFVG and high[2] < low and (low - high[2]) >= fvgMinSizeA
-bool aBearFVG_form = showFVG and low[2]  > high and (low[2] - high) >= fvgMinSizeA
-bool bBullFVG_form = showFVG and bH[2] < bL and (bL - bH[2]) >= fvgMinSizeB
-bool bBearFVG_form = showFVG and bL[2] > bH and (bL[2] - bH) >= fvgMinSizeB
+if aSwL_phase == 0 and not na(aSwL) and not na(bSwL) and inDisplay
+    bool aWicked     = low < aSwL
+    bool aClosedBack = close > aSwL
+    bool aValidC2    = aWicked and (not requireCloseBack or aClosedBack)
+    bool bWicked     = bL < bSwL
+    if aValidC2
+        aSwL_C2_aLow := low
+        aSwL_C2_bLow := bL
+        if showC2 and not bWicked
+            line.new(aSwLBar, aSwL, bar_index, low, color=bullClr, width=c2Width, style=line.style_solid)
+            c2BullFire := true
+        aSwL_phase := 1
+    else if aWicked and not aClosedBack
+        // chart broke clean through → pivot consumed, no C2 on this side
+        aSwL_phase := 2
+else if aSwL_phase == 1 and not na(aSwL) and not na(bSwL) and inDisplay
+    bool aDeepened     = low < aSwL_C2_aLow
+    float bCombinedLow = math.min(aSwL_C2_bLow, bL)
+    bool bStayedInside = bCombinedLow >= bSwL
+    if show2Bar and aDeepened and bStayedInside
+        line.new(aSwLBar, aSwL, bar_index, low, color=bullClr, width=twoBarWidth, style=line.style_solid)
+        twoBarBullFire := true
+    aSwL_phase := 2
 
-var float aFVGBullTop = na, var float aFVGBullBot = na, var int aFVGBullBar = na, var bool aFVGBullDone = false
-var float aFVGBearTop = na, var float aFVGBearBot = na, var int aFVGBearBar = na, var bool aFVGBearDone = false
-var float bFVGBullBot = na, var bool bFVGBullDone = false
-var float bFVGBearTop = na, var bool bFVGBearDone = false
-var box   aFVGBullBox = na, var box aFVGBearBox = na
+// ════════════════════════════════════════════════════════════════════
+// SWING HIGH — bear SMT (C2 + 2-bar)
+// ════════════════════════════════════════════════════════════════════
+bool c2BearFire     = false
+bool twoBarBearFire = false
 
-if aBullFVG_form
-    box.delete(aFVGBullBox)
-    aFVGBullTop := low
-    aFVGBullBot := high[2]
-    aFVGBullBar := bar_index - 2
-    aFVGBullDone := false
-    if showBoxes and showFVG
-        aFVGBullBox := box.new(aFVGBullBar, aFVGBullTop, bar_index, aFVGBullBot,
-             bgcolor=fvgFill, border_color=color.new(levelClr, 50), border_width=1)
-if aBearFVG_form
-    box.delete(aFVGBearBox)
-    aFVGBearTop := low[2]
-    aFVGBearBot := high
-    aFVGBearBar := bar_index - 2
-    aFVGBearDone := false
-    if showBoxes and showFVG
-        aFVGBearBox := box.new(aFVGBearBar, aFVGBearTop, bar_index, aFVGBearBot,
-             bgcolor=fvgFill, border_color=color.new(levelClr, 50), border_width=1)
-
-if bBullFVG_form
-    bFVGBullBot := bH[2]
-    bFVGBullDone := false
-if bBearFVG_form
-    bFVGBearTop := bL[2]
-    bFVGBearDone := false
-
-if not na(aFVGBullBox) and not aFVGBullDone
-    box.set_right(aFVGBullBox, bar_index)
-if not na(aFVGBearBox) and not aFVGBearDone
-    box.set_right(aFVGBearBox, bar_index)
-
-bool aSwept_FVGBull = showFVG and not na(aFVGBullBot) and not aFVGBullDone and low  < aFVGBullBot and (not requireCloseBack or close > aFVGBullBot)
-bool aSwept_FVGBear = showFVG and not na(aFVGBearBot) and not aFVGBearDone and high > aFVGBearBot and (not requireCloseBack or close < aFVGBearBot)
-bool bSwept_FVGBull = showFVG and not na(bFVGBullBot) and not bFVGBullDone and bL  < bFVGBullBot and (not requireCloseBack or bC > bFVGBullBot)
-bool bSwept_FVGBear = showFVG and not na(bFVGBearTop) and not bFVGBearDone and bH  > bFVGBearTop and (not requireCloseBack or bC < bFVGBearTop)
-
-float bPriorLo = ta.lowest(bL,  divLookback)[1]
-float bPriorHi = ta.highest(bH, divLookback)[1]
-float aPriorLo = ta.lowest(low, divLookback)[1]
-float aPriorHi = ta.highest(high, divLookback)[1]
-bool  bMadeNewLo = bL < bPriorLo
-bool  bMadeNewHi = bH > bPriorHi
-bool  aMadeNewLo = low < aPriorLo
-bool  aMadeNewHi = high > aPriorHi
-
-bool bullSMT_FVG_fromA = aSwept_FVGBull and not bMadeNewLo and not aFVGBullDone
-bool bearSMT_FVG_fromA = aSwept_FVGBear and not bMadeNewHi and not aFVGBearDone
-bool bullSMT_FVG_fromB = bSwept_FVGBull and not aMadeNewLo and not bFVGBullDone
-bool bearSMT_FVG_fromB = bSwept_FVGBear and not aMadeNewHi and not bFVGBearDone
-
-if bullSMT_FVG_fromA and inDisplay
-    line.new(aFVGBullBar, aFVGBullBot, bar_index, low, color=bullClr, width=smtWidth, style=line.style_solid)
-    aFVGBullDone := true
-if bearSMT_FVG_fromA and inDisplay
-    line.new(aFVGBearBar, aFVGBearBot, bar_index, high, color=bearClr, width=smtWidth, style=line.style_solid)
-    aFVGBearDone := true
-if bullSMT_FVG_fromB and inDisplay
-    int anchorB = math.max(0, bar_index - divLookback)
-    line.new(anchorB, aPriorLo, bar_index, low, color=bullClr, width=smtWidth, style=line.style_solid)
-    bFVGBullDone := true
-if bearSMT_FVG_fromB and inDisplay
-    int anchorB = math.max(0, bar_index - divLookback)
-    line.new(anchorB, aPriorHi, bar_index, high, color=bearClr, width=smtWidth, style=line.style_solid)
-    bFVGBearDone := true
-
-if showFVG and aSwept_FVGBull and bSwept_FVGBull
-    aFVGBullDone := true
-    bFVGBullDone := true
-if showFVG and aSwept_FVGBear and bSwept_FVGBear
-    aFVGBearDone := true
-    bFVGBearDone := true
+if aSwH_phase == 0 and not na(aSwH) and not na(bSwH) and inDisplay
+    bool aWicked     = high > aSwH
+    bool aClosedBack = close < aSwH
+    bool aValidC2    = aWicked and (not requireCloseBack or aClosedBack)
+    bool bWicked     = bH > bSwH
+    if aValidC2
+        aSwH_C2_aHigh := high
+        aSwH_C2_bHigh := bH
+        if showC2 and not bWicked
+            line.new(aSwHBar, aSwH, bar_index, high, color=bearClr, width=c2Width, style=line.style_solid)
+            c2BearFire := true
+        aSwH_phase := 1
+    else if aWicked and not aClosedBack
+        aSwH_phase := 2
+else if aSwH_phase == 1 and not na(aSwH) and not na(bSwH) and inDisplay
+    bool aDeepened      = high > aSwH_C2_aHigh
+    float bCombinedHigh = math.max(aSwH_C2_bHigh, bH)
+    bool bStayedInside  = bCombinedHigh <= bSwH
+    if show2Bar and aDeepened and bStayedInside
+        line.new(aSwHBar, aSwH, bar_index, high, color=bearClr, width=twoBarWidth, style=line.style_solid)
+        twoBarBearFire := true
+    aSwH_phase := 2
 
 // ════════════════════════════════════════════════════════════════════
 // ALERTS
 // ════════════════════════════════════════════════════════════════════
-alertcondition(bullSMT_PDL,                              title="Bull SMT @ PDL",        message="Bull SMT @ PDL on {{ticker}}")
-alertcondition(bearSMT_PDH,                              title="Bear SMT @ PDH",        message="Bear SMT @ PDH on {{ticker}}")
-alertcondition(bullSMT_SwL,                              title="Bull SMT @ Swing Low",  message="Bull SMT @ Swing Low on {{ticker}}")
-alertcondition(bearSMT_SwH,                              title="Bear SMT @ Swing High", message="Bear SMT @ Swing High on {{ticker}}")
-alertcondition(bullSMT_FVG_fromA or bullSMT_FVG_fromB,   title="Bull SMT @ FVG",        message="Bull SMT @ FVG on {{ticker}}")
-alertcondition(bearSMT_FVG_fromA or bearSMT_FVG_fromB,   title="Bear SMT @ FVG",        message="Bear SMT @ FVG on {{ticker}}")
+alertcondition(c2BullFire,     title="C2 Bull SMT @ Swing Low",     message="C2 Bull SMT @ Swing Low on {{ticker}}")
+alertcondition(c2BearFire,     title="C2 Bear SMT @ Swing High",    message="C2 Bear SMT @ Swing High on {{ticker}}")
+alertcondition(twoBarBullFire, title="2-bar Bull SMT @ Swing Low",  message="2-bar Bull SMT @ Swing Low on {{ticker}}")
+alertcondition(twoBarBearFire, title="2-bar Bear SMT @ Swing High", message="2-bar Bear SMT @ Swing High on {{ticker}}")
