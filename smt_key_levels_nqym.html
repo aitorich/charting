@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SMT @ Key Levels — NQ / YM</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#0a0a0f; color:#e0e0e0; font-family:'Segoe UI',Tahoma,sans-serif; padding:20px; }
+  .header { text-align:center; margin-bottom:18px; }
+  .header h1 { font-size:18px; color:#fff; font-weight:600; }
+  .header p { color:#888; font-size:11px; margin-top:4px; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .panel { background:#111118; border:1px solid #2a2a3a; border-radius:8px; padding:12px; }
+  .panel h3 { font-size:11px; color:#aaa; margin-bottom:8px; font-weight:600; letter-spacing:0.6px; }
+  canvas { width:100%; height:280px; background:#08080d; border-radius:4px; display:block; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>SMT @ Key Levels — NQ / YM</h1>
+  <p>PDH/PDL · Swing High/Low · FVG · solid wick-to-wick SMT lines</p>
+</div>
+
+<div class="grid">
+  <div class="panel"><h3>BULL SMT @ PDL</h3><canvas id="bullPDL"></canvas></div>
+  <div class="panel"><h3>BEAR SMT @ PDH</h3><canvas id="bearPDH"></canvas></div>
+  <div class="panel"><h3>BULL SMT @ SWING LOW</h3><canvas id="bullSwing"></canvas></div>
+  <div class="panel"><h3>BEAR SMT @ SWING HIGH</h3><canvas id="bearSwing"></canvas></div>
+  <div class="panel"><h3>BULL SMT @ BULLISH FVG</h3><canvas id="bullFVG"></canvas></div>
+  <div class="panel"><h3>BEAR SMT @ BEARISH FVG</h3><canvas id="bearFVG"></canvas></div>
+</div>
+
+<script>
+// ─── colors ─────────────────────────────────────────────────────────
+const C = {
+  bull:'#00e676', bear:'#ff1744',
+  level:'#ffb74d',
+  fvg:'rgba(255,183,77,0.15)',
+  nqUp:'#4ecdc4', nqDn:'#1a936f',
+  ymUp:'#ff8a65', ymDn:'#c0392b'
+};
+
+// ─── canvas setup (HiDPI) ───────────────────────────────────────────
+function setup(id) {
+  const cvs = document.getElementById(id);
+  const dpr = window.devicePixelRatio || 1;
+  const w = cvs.clientWidth, h = cvs.clientHeight;
+  cvs.width = w * dpr; cvs.height = h * dpr;
+  const ctx = cvs.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return { ctx, w, h };
+}
+
+const mk = (o, hi, lo, c) => ({ open:o, high:hi, low:lo, close:c });
+
+// ─── primitives ─────────────────────────────────────────────────────
+function dashedLine(ctx, x1, y1, x2, y2, color, width = 1.5) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.setLineDash([5, 3]);
+  ctx.beginPath();
+  ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function solidLine(ctx, x1, y1, x2, y2, color, width = 2) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+  ctx.stroke();
+}
+
+function drawCandles(ctx, candles, rect, py, opts) {
+  const slot = rect.w / candles.length;
+  const cw = Math.max(4, slot * 0.55);
+  ctx.setLineDash([]);
+  candles.forEach((c, i) => {
+    const cx = rect.x + slot * (i + 0.5);
+    const col = c.close >= c.open ? opts.bull : opts.bear;
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(cx, py(c.high));
+    ctx.lineTo(cx, py(c.low));
+    ctx.stroke();
+    const yo = py(c.open), yc = py(c.close);
+    const top = Math.min(yo, yc);
+    const bh = Math.max(2, Math.abs(yc - yo));
+    ctx.fillStyle = col;
+    ctx.fillRect(cx - cw / 2, top, cw, bh);
+  });
+}
+
+// ─── panel build ────────────────────────────────────────────────────
+function buildPanel(canvasId, nqData, ymData) {
+  const { ctx, w, h } = setup(canvasId);
+  const padX = 24, padTop = 14, padBot = 14, gap = 14;
+  const chartH = (h - padTop - padBot - gap) / 2;
+  const r1 = { x:padX, y:padTop, w:w - padX*2, h:chartH };
+  const r2 = { x:padX, y:padTop + chartH + gap, w:w - padX*2, h:chartH };
+
+  // shared price range across both rows so y-axes align
+  let mn = Infinity, mx = -Infinity;
+  [...nqData, ...ymData].forEach(c => {
+    mn = Math.min(mn, c.low); mx = Math.max(mx, c.high);
+  });
+  const pad = (mx - mn) * 0.15;
+  mn -= pad; mx += pad;
+  const span = mx - mn;
+  const py1 = p => r1.y + r1.h - ((p - mn) / span) * r1.h;
+  const py2 = p => r2.y + r2.h - ((p - mn) / span) * r2.h;
+
+  return { ctx, w, h, r1, r2, py1, py2, slot: r1.w / nqData.length, nq:nqData, ym:ymData };
+}
+
+// ─── overlay helpers ────────────────────────────────────────────────
+function levelLine(p, priceNQ, priceYM = priceNQ) {
+  dashedLine(p.ctx, p.r1.x, p.py1(priceNQ), p.r1.x + p.r1.w, p.py1(priceNQ), C.level);
+  dashedLine(p.ctx, p.r2.x, p.py2(priceYM), p.r2.x + p.r2.w, p.py2(priceYM), C.level);
+}
+
+function fvgBox(p, top, bottom) {
+  p.ctx.fillStyle = C.fvg;
+  p.ctx.fillRect(p.r1.x, p.py1(top), p.r1.w, p.py1(bottom) - p.py1(top));
+  p.ctx.fillRect(p.r2.x, p.py2(top), p.r2.w, p.py2(bottom) - p.py2(top));
+}
+
+function paintCandles(p) {
+  drawCandles(p.ctx, p.nq, p.r1, p.py1, { bull:C.nqUp, bear:C.nqDn });
+  drawCandles(p.ctx, p.ym, p.r2, p.py2, { bull:C.ymUp, bear:C.ymDn });
+}
+
+function smtLine(p, fromIdx, toIdx, nqFrom, nqTo, ymFrom, ymTo, isBull) {
+  const x1 = p.r1.x + p.slot * (fromIdx + 0.5);
+  const x2 = p.r1.x + p.slot * (toIdx + 0.5);
+  const col = isBull ? C.bull : C.bear;
+  solidLine(p.ctx, x1, p.py1(nqFrom), x2, p.py1(nqTo), col);
+  solidLine(p.ctx, x1, p.py2(ymFrom), x2, p.py2(ymTo), col);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 1 · BULL SMT @ PDL
+// ═══════════════════════════════════════════════════════════════════
+function renderBullPDL() {
+  const nq = [
+    mk(101,103,100,102),
+    mk(102,103, 99,100),
+    mk(100,101, 97, 98),
+    mk( 98, 99, 96, 96.5),
+    mk( 96.5,98, 92, 99)   // sweeps PDL=95
+  ];
+  const ym = [
+    mk(101,103,100,102),
+    mk(102,103, 99,100),
+    mk(100,101, 97, 98),
+    mk( 98, 99, 96, 96.5),
+    mk( 96.5,98, 96, 99)   // holds above PDL
+  ];
+  const p = buildPanel('bullPDL', nq, ym);
+  levelLine(p, 95);
+  paintCandles(p);
+  smtLine(p, 3, 4,  96, 92,  96, 96, true);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 2 · BEAR SMT @ PDH
+// ═══════════════════════════════════════════════════════════════════
+function renderBearPDH() {
+  const nq = [
+    mk( 99,100, 97, 98),
+    mk( 98,101, 97,100),
+    mk(100,103, 99,102),
+    mk(102,104,101,103.5),
+    mk(103.5,108,102,101)  // sweeps PDH=105
+  ];
+  const ym = [
+    mk( 99,100, 97, 98),
+    mk( 98,101, 97,100),
+    mk(100,103, 99,102),
+    mk(102,104,101,103.5),
+    mk(103.5,104,102,101)  // holds below PDH
+  ];
+  const p = buildPanel('bearPDH', nq, ym);
+  levelLine(p, 105);
+  paintCandles(p);
+  smtLine(p, 3, 4,  104, 108,  104, 104, false);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 3 · BULL SMT @ SWING LOW
+// ═══════════════════════════════════════════════════════════════════
+function renderBullSwing() {
+  const nq = [
+    mk(99,100, 98, 99),
+    mk(99,100, 95, 96),    // swing low at 95
+    mk(96, 98, 96, 97),
+    mk(97, 98, 95.5,96),
+    mk(96, 97, 92, 99)     // sweeps swing low
+  ];
+  const ym = [
+    mk(99,100, 98, 99),
+    mk(99,100, 96, 97),    // swing low at 96
+    mk(97, 98, 96.5,97.5),
+    mk(97.5,98,96.5,97),
+    mk(97, 98, 96, 99)     // holds at swing low
+  ];
+  const p = buildPanel('bullSwing', nq, ym);
+  levelLine(p, 95, 96);
+  paintCandles(p);
+  smtLine(p, 1, 4,  95, 92,  96, 96, true);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 4 · BEAR SMT @ SWING HIGH
+// ═══════════════════════════════════════════════════════════════════
+function renderBearSwing() {
+  const nq = [
+    mk(98, 99, 97, 98),
+    mk(98,105, 97, 98),    // swing high at 105
+    mk(98, 99, 97, 98),
+    mk(98,103, 97,102),
+    mk(102,108,101, 99)    // sweeps swing high
+  ];
+  const ym = [
+    mk(98, 99, 97, 98),
+    mk(98,104, 97, 98),    // swing high at 104
+    mk(98, 99, 97, 98),
+    mk(98,103, 97,102),
+    mk(102,103,101, 99)    // holds below swing high
+  ];
+  const p = buildPanel('bearSwing', nq, ym);
+  levelLine(p, 105, 104);
+  paintCandles(p);
+  smtLine(p, 1, 4,  105, 108,  104, 103, false);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 5 · BULL SMT @ BULLISH FVG
+// ═══════════════════════════════════════════════════════════════════
+function renderBullFVG() {
+  // FVG zone: top=100 (C3.low), bottom=98 (C1.high)
+  const nq = [
+    mk(95, 98, 94, 97),     // C1: high 98 (FVG bottom)
+    mk(97,103, 96,102),     // C2: displacement up
+    mk(102,104,100,103),    // C3: low 100 (FVG top)
+    mk(103,104,100,101),
+    mk(101,102, 99,100),    // retraces into FVG
+    mk(100,101, 96, 99)     // sweeps below FVG
+  ];
+  const ym = [
+    mk(95, 98, 94, 97),
+    mk(97,103, 96,102),
+    mk(102,104,100,103),
+    mk(103,104,100,101),
+    mk(101,102, 99,100),
+    mk(100,101, 99.2,99.5)  // holds inside FVG
+  ];
+  const p = buildPanel('bullFVG', nq, ym);
+  fvgBox(p, 100, 98);
+  paintCandles(p);
+  smtLine(p, 4, 5,  99, 96,  99, 99.2, true);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 6 · BEAR SMT @ BEARISH FVG
+// ═══════════════════════════════════════════════════════════════════
+function renderBearFVG() {
+  // FVG zone: top=98 (C1.low), bottom=96 (C3.high)
+  const nq = [
+    mk(102,103,98, 99),     // C1: low 98 (FVG top)
+    mk( 99,100,93, 94),     // C2: displacement down
+    mk( 94, 96,92, 93),     // C3: high 96 (FVG bottom)
+    mk( 93, 96,92, 95),
+    mk( 95, 97,94, 96),     // retraces into FVG
+    mk( 96,100,95, 97)      // sweeps above FVG
+  ];
+  const ym = [
+    mk(102,103,98, 99),
+    mk( 99,100,93, 94),
+    mk( 94, 96,92, 93),
+    mk( 93, 96,92, 95),
+    mk( 95, 97,94, 96),
+    mk( 96, 96.8,95, 96)    // holds inside FVG
+  ];
+  const p = buildPanel('bearFVG', nq, ym);
+  fvgBox(p, 98, 96);
+  paintCandles(p);
+  smtLine(p, 4, 5,  97, 100,  97, 96.8, false);
+}
+
+// ─── run all ────────────────────────────────────────────────────────
+function renderAll() {
+  renderBullPDL();
+  renderBearPDH();
+  renderBullSwing();
+  renderBearSwing();
+  renderBullFVG();
+  renderBearFVG();
+}
+
+window.addEventListener('load', renderAll);
+let resizeT = null;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeT);
+  resizeT = setTimeout(renderAll, 150);
+});
+</script>
+
+</body>
+</html>
