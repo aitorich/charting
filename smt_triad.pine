@@ -12,6 +12,10 @@
 // on the chart symbol from the level's anchor bar to the current bar's wick.
 //   Bullish SMT line: green (default #00e676)
 //   Bearish SMT line: red   (default #ff1744)
+//
+// PAIR-SYMMETRIC: add this indicator to BOTH charts (NQ and YM). It auto-detects
+// which side of the pair the chart represents and draws the SMT lines locally on
+// each chart's own price coordinates.
 
 //@version=6
 indicator("SMT Triad — Key Level Hunter", "SMT Triad", overlay=true,
@@ -24,7 +28,13 @@ gV  = "Validation"
 gD  = "Display"
 gSt = "Style"
 
-string symB = input.symbol("YM1!", "Symbol B (correlated pair)", group=gS)
+string symA = input.symbol("NQ1!", "Pair Symbol A", group=gS)
+string symB = input.symbol("YM1!", "Pair Symbol B", group=gS)
+
+// Auto-detect which side of the pair this chart represents — the OTHER symbol
+// is what we request via security(). Works whether you load the indicator on
+// NQ or on YM, so the same script paints both charts.
+string otherSym = str.contains(symA, syminfo.ticker) ? symB : symA
 
 bool   showPDHL    = input.bool(true,  "Enable PDH / PDL",        group=gL)
 bool   showSwing   = input.bool(true,  "Enable Swing High / Low", group=gL)
@@ -46,8 +56,8 @@ int    smtWidth  = input.int(2, "SMT Line Width", minval=1, maxval=5, group=gSt)
 bool   showLines = input.bool(true, "Show level lines", group=gSt)
 bool   showBoxes = input.bool(true, "Show FVG boxes",   group=gSt)
 
-// ─── DATA (Symbol B) ─────────────────────────────────────────────────
-[bH, bL, bO, bC] = request.security(symB, timeframe.period, [high, low, open, close], lookahead=barmerge.lookahead_off)
+// ─── DATA (the OTHER pair member) ────────────────────────────────────
+[bH, bL, bO, bC] = request.security(otherSym, timeframe.period, [high, low, open, close], lookahead=barmerge.lookahead_off)
 
 // ─── DISPLAY FILTER ──────────────────────────────────────────────────
 int tfSec = timeframe.in_seconds(timeframe.period)
@@ -59,7 +69,7 @@ bool inDisplay = bar_index >= last_bar_index - lookbackBars
 // 1 · PDH / PDL
 // ════════════════════════════════════════════════════════════════════
 [aPDH_d, aPDL_d] = request.security(syminfo.tickerid, "D", [high[1], low[1]], lookahead=barmerge.lookahead_off)
-[bPDH_d, bPDL_d] = request.security(symB, "D", [high[1], low[1]], lookahead=barmerge.lookahead_off)
+[bPDH_d, bPDL_d] = request.security(otherSym, "D", [high[1], low[1]], lookahead=barmerge.lookahead_off)
 
 bool isNewDay = ta.change(time("D")) != 0
 
@@ -114,7 +124,7 @@ if showPDHL and aSwept_PDL and bSwept_PDL
 // ════════════════════════════════════════════════════════════════════
 float aSwHi_raw = ta.pivothigh(high, swingL, swingR)
 float aSwLo_raw = ta.pivotlow(low,  swingL, swingR)
-[bSwHi_raw, bSwLo_raw] = request.security(symB, timeframe.period,
+[bSwHi_raw, bSwLo_raw] = request.security(otherSym, timeframe.period,
      [ta.pivothigh(high, swingL, swingR), ta.pivotlow(low, swingL, swingR)],
      lookahead=barmerge.lookahead_off)
 
