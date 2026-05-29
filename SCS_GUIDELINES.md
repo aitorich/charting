@@ -1,64 +1,81 @@
-# Sweep Closure Sequencer [SCS] — Guidelines
+# Sweep Closure Sequencer MTF [SCS-MTF] — Guidelines
 
-Visual style modeled after `fractal_candle_closure.pine` from the
-`feat/smt-quarter-sequences` branch. Same drawing idiom, narrower scope:
-just the closure line and the equilibrium box.
+Multi-timeframe variant. Reversals are detected on a configurable HTF.
+The equilibrium box is **fractal**: it represents an HTF setup but renders
+ONLY on the aligned LTF chart, so it functions as a precise LTF entry zone.
+
+## Aligned timeframe pairs
+
+| HTF (detection) | Aligned LTF (rendering) |
+|---|---|
+| 15m | 1m |
+| 30m | 3m |
+| 1H  | 5m |
+| 4H  | 15m |
+| 1D  | 1H |
+| 1W  | 4H |
+
+If the chart TF matches neither the chosen HTF nor its aligned LTF, nothing draws.
 
 ## What it draws
 
-1. **Closure line** — a short red horizontal line at the swept extreme of C1, drawn on the C2 bar (the bar that swept C1).
-2. **Equilibrium box** — a translucent blue rectangle, drawn on the C3 bar (one bar after C2), spanning from `open(C3)` to the midpoint of `[open(C3), swept extreme of C1]`.
+| Element | HTF chart | Aligned LTF chart |
+|---|---|---|
+| Closure line at swept extreme | yes | yes (toggleable) |
+| Equilibrium box (open(C4) ↔ midpoint) | no | yes |
+| HTF opening line | no | yes |
 
-No text. No labels. Lines and boxes only.
+No labels, no text. Lines and boxes only.
 
 ## Logic
 
-Immediate C1/C2 detection — every bar is potentially a C2 of the bar before it.
+When a new HTF candle (call it C4) opens, the previous HTF candle (C3) is
+evaluated against the one before it (C2):
 
-- **Bullish reversal**: `low < low[1] and close > low[1]` → C2 wicked C1's low and closed back above. Draw closure line at `low[1]`. On the next bar, draw the equilibrium box from `open` down to the midpoint.
-- **Bearish reversal**: `high > high[1] and close < high[1]` → C2 wicked C1's high and closed back below. Mirror image.
+- **Bullish reversal**: `low(C3) < low(C2)` AND `close(C3) > low(C2)`.
+- **Bearish reversal**: `high(C3) > high(C2)` AND `close(C3) < high(C2)`.
 
-This matches the rolling-reference rule at depth 1: each bar is treated as a fresh C1 candidate for the next bar's evaluation. If the current bar isn't a reversal, the next bar gets evaluated against this one.
+On a reversal:
 
-## Install
+- Draw the closure line at the swept extreme (C2 low for bull, C2 high for bear).
+- On aligned LTF only, draw the equilibrium box from `open(C4)` to the midpoint of `[open(C4), swept extreme]`.
+- The HTF opening line at `open(C4)` updates on every new HTF candle (independent of reversals).
 
-1. TradingView → Pine Editor.
-2. Paste `SweepClosureSequencer.pine`.
-3. Save → Add to chart.
+## Bias filter
+
+- **Auto**: draw both bullish and bearish reversals.
+- **Bullish only**: only bullish reversals (sweeps of lows that close back above).
+- **Bearish only**: only bearish reversals (sweeps of highs that close back below).
 
 ## Settings
 
-| Group | Input | Default | Purpose |
-|---|---|---|---|
-| Display | Show Last N Days | 3 | Limit drawings to the most recent N days |
-| Closure Line | Show Closure Line | true | Toggle the line |
-| Closure Line | Line Color | red `#ff1744` | Line color |
-| Closure Line | Line Width | 1 | 1–5 |
-| Closure Line | Line Style | Solid | Solid / Dashed / Dotted |
-| Closure Line | Line Extra Bars | 1 | How far past C2 the line extends |
-| Equilibrium Box | Show Equilibrium Box | true | Toggle the box |
-| Equilibrium Box | Bull / Bear Box Color | translucent blue `#2196f3` | Fill color |
-| Equilibrium Box | Bull / Bear Border | semi-translucent blue | Border color |
-| Equilibrium Box | Border Width | 1 | 0–3 |
-| Equilibrium Box | Box Extra Bars | 2 | Right extension of the box |
+| Group | Input | Default |
+|---|---|---|
+| Timeframe | HTF (reversal source) | 240 (4H) |
+| Bias | Bias | Auto |
+| Closure Line | Show / Color / Width / Style / Extension (HTF bars) / Render on LTF | true / red / 2 / Solid / 1 / true |
+| Equilibrium Box | Show / Bull/Bear fill / Bull/Bear border / Border width / Extension (HTF bars) | true / blue 80% / blue 50% / 1 / 1 |
+| HTF Opening Line | Show / Color / Width / Style / Keep historical | true / orange / 1 / Solid / false |
+| Display | Last N days | 7 |
 
-## Verification
+## Verification flow
 
-Apply on a liquid pair (EURUSD, GBPUSD, NQ, ES) on 1H or 4H. You should see:
-
-- Red horizontal lines bridging two adjacent candles whenever the right candle wicked the left candle's high or low and closed back inside.
-- Blue translucent rectangles appearing on the bar AFTER each red line, sized to the upper or lower half of `open(C3)` ↔ swept extreme.
-
-If you want denser signals: lower the timeframe (15m, 5m). If you want fewer: increase TF or shorten `Show Last N Days`.
+1. Pick HTF = 4H, chart TF = 15m. Apply the indicator.
+2. Wait until a 4H candle closes that satisfies the reversal rule. At the open of the next 4H candle, you should see:
+   - A red closure line on the 15m chart at the swept C2 high/low.
+   - A translucent blue equilibrium box from the new 4H candle's open to its 50% level.
+   - An orange line at the 4H open extending right through the 15m bars.
+3. Switch the chart to 4H: the equilibrium box disappears (LTF-only), the closure line stays, the HTF opening line disappears (LTF-only).
 
 ## Tuning tips
 
-- **Cleaner chart on trending pairs**: increase `Line Width` to 2, set `Line Extra Bars` to 0 so the lines don't overlap subsequent candles.
-- **Wider eq boxes**: bump `Box Extra Bars` to 5–10.
-- **Different colors per direction**: split bull and bear box colors (already exposed as separate inputs).
+- **Trade-day focus**: set `Last N days` to 1–2 to keep only fresh setups.
+- **Tight entries**: leave `Extension (HTF bars)` at 1 so the box ends at the next HTF candle.
+- **Trail the level**: turn on `Keep historical opens` to record every HTF open as a static line for reference.
+- **Direction-locked sessions**: set bias to Bullish-only or Bearish-only when the higher narrative is one-directional.
 
-## Limitations / known behaviour
+## Notes
 
-- Pure 2-bar comparison. No deeper rolling reference, no ATR filters, no trend gating.
-- The equilibrium box appears one bar after the reversal because it needs `open(C3)`. On the live (developing) bar that just produced a reversal, the box won't render until the next bar opens.
-- `max_lines_count` and `max_boxes_count` are 500 each; the engine auto-prunes oldest drawings beyond that.
+- Detection uses `request.security(... lookahead_on)` on closed-HTF series (`high[1]`, `low[1]`, `close[1]`). This is safe because we only act on `isNewHtfBar`, i.e. the bar after C3 has fully closed.
+- `barsPerHtf` is computed from `timeframe.in_seconds(htf) / timeframe.in_seconds(chart)` so line/box widths look proportionally identical between HTF and aligned LTF charts.
+- `max_lines_count` and `max_boxes_count` are 500 each; oldest drawings auto-prune.
