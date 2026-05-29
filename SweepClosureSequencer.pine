@@ -9,8 +9,8 @@
 //
 // Strict validity rules:
 //   - C2 reversal (depth-1) is valid ONLY if CISD confirms INSIDE the
-//     continuation HTF candle (the C3 candle in user terminology) on the
-//     aligned chart (LTF or Middle TF).
+//     continuation HTF candle (the C3 candle in user terminology) on
+//     the aligned chart (LTF or Middle TF).
 //   - C3 reversal (depth-2) is valid ONLY if CISD confirms INSIDE the
 //     continuation HTF candle (the C4 candle in user terminology).
 //   - Both are tracked INDEPENDENTLY. Each draws its own visuals only
@@ -18,11 +18,8 @@
 //   - If CISD does not confirm by the end of the continuation candle,
 //     NOTHING is drawn for that setup.
 //
-// CISD search is dynamic: as the continuation HTF candle's LTF bars
-// unfold, the running extreme (low for bull, high for bear) and the
-// consecutive opposite-direction run terminating at it are recomputed
-// each bar. Anchor = open of OLDEST candle in that run. CISD fires the
-// first bar that closes through the anchor.
+// CISD search is dynamic and STRICTLY contained within the continuation
+// HTF candle's LTF bars.
 
 //@version=6
 indicator("Sweep Closure Sequencer MTF [SCS-MTF]", "SCS-MTF", overlay = true, max_lines_count = 500, max_boxes_count = 500)
@@ -152,105 +149,64 @@ if canOpen and isNewHtfBar
     htfOpenLn := line.new(bar_index, low, bar_index, high, color = openColor, width = openWidth, style = lineStyleFn(openStyleStr), extend = verticalExtendFn(openExtendStr), xloc = xloc.bar_index)
 
 // =====================================================================
-// CISD search helpers
-//   findExtremeBar : within the last `barsBack+1` LTF bars (i.e. inside
-//                    the developing continuation HTF candle), return the
-//                    bar_index of the lowest low (dir=+1) or highest high.
-//   findRunFromExtreme : starting at `extBar`, walk back to find the
-//                    consecutive opposite-direction run terminating at
-//                    or before extBar. Returns [anchor, oldRunBar,
-//                    newRunBar]. The run can extend back beyond the
-//                    continuation candle (up to barsPerHtf*4 lookback).
+// CISD search — STRICTLY within continuation HTF candle's LTF window
+//   startBar = bar_index where the continuation HTF candle opened
+//   Steps:
+//     1. Find the extreme bar (lowest low for bull / highest high for bear)
+//        among LTF bars in [startBar, bar_index].
+//     2. Walk backward from that extreme to find the consecutive
+//        opposite-direction run terminating at/before it. The walk
+//        cannot go past startBar.
+//     3. Anchor = open of the OLDEST candle in the run.
 // =====================================================================
-
-findExtremeBar(int dir, int barsBack) =>
+findCisdInWindow(int dir, int startBar) =>
+    int   n      = bar_index - startBar
     int   extBar = bar_index
     float extVal = dir == 1 ? low : high
-    if barsBack > 0
-        for i = 1 to barsBack
+    if n > 0
+        for i = 1 to n
             float v = dir == 1 ? low[i] : high[i]
             bool better = dir == 1 ? (v < extVal) : (v > extVal)
             if better
                 extVal := v
                 extBar := bar_index - i
-    extBar
 
-findRunFromExtreme(int extBar, int dir) =>
-    int   searchLimit = bar_index - barsPerHtf * 4
-    int   iter        = extBar
-    int   newRun      = na
-    int   oldRun      = na
-    float anch        = na
-    int   guard       = 0
-    while iter >= searchLimit and guard < 300
+    int   newRun = na
+    int   oldRun = na
+    float anch   = na
+    int   iter   = extBar
+    int   guard  = 0
+    while iter >= startBar and guard < 500
         int off = bar_index - iter
         if off >= 0
             bool isOpp = dir == 1 ? (close[off] < open[off]) : (close[off] > open[off])
             if isOpp
                 newRun := iter
                 break
-        iter -= 1
+        iter  -= 1
         guard += 1
+
     if not na(newRun)
         oldRun := newRun
-        int j = newRun - 1
+        int j  = newRun - 1
         int g2 = 0
-        while j >= searchLimit and g2 < 300
+        while j >= startBar and g2 < 500
             int off = bar_index - j
-            bool ext = false
+            bool isOpp = false
             if off >= 0
-                bool isOpp = dir == 1 ? (close[off] < open[off]) : (close[off] > open[off])
-                if isOpp
-                    oldRun := j
-                    ext := true
-            if ext
-                j -= 1
-                g2 += 1
+                isOpp := dir == 1 ? (close[off] < open[off]) : (close[off] > open[off])
+            if isOpp
+                oldRun := j
+                j      -= 1
+                g2     += 1
             else
                 break
         anch := open[bar_index - oldRun]
+
     [anch, oldRun, newRun]
 
 // =====================================================================
-// Independent pending slots
-// =====================================================================
-var int    p1Dir       = 0
-var int    p1Start     = na
-var float  p1CloseLvl  = na
-var int    p1CloseLeft = na
-var float  p1BoxOpen   = na
-var float  p1BoxExt    = na
-
-var int    p2Dir       = 0
-var int    p2Start     = na
-var float  p2CloseLvl  = na
-var int    p2CloseLeft = na
-var float  p2BoxOpen   = na
-var float  p2BoxExt    = na
-
-// Arm slot 1 on C2 reversal (do NOT precompute anchor — it will be found
-// dynamically inside the C3 LTF window)
-if isAligned and inDisplay and (revBull1 or revBear1) and p1Dir == 0
-    bool bull   = revBull1
-    p1Dir       := bull ? 1 : -1
-    p1Start     := bar_index
-    p1BoxOpen   := currentHtfOpen
-    p1BoxExt    := bull ? htfL1 : htfH1
-    p1CloseLvl  := bull ? htfL2 : htfH2
-    p1CloseLeft := bar_index - barsPerHtf * 2
-
-// Arm slot 2 on C3 reversal
-if isAligned and inDisplay and (revBull2 or revBear2) and p2Dir == 0
-    bool bull   = revBull2
-    p2Dir       := bull ? 1 : -1
-    p2Start     := bar_index
-    p2BoxOpen   := currentHtfOpen
-    p2BoxExt    := bull ? htfL1 : htfH1
-    p2CloseLvl  := bull ? htfL3 : htfH3
-    p2CloseLeft := bar_index - barsPerHtf * 3
-
-// =====================================================================
-// Drawing helper — emits all visuals for a confirmed CISD setup
+// Drawing helper
 // =====================================================================
 drawConfirmed(int dir, float anchor, int oldBar, int newBar, float closeLvl, int closeLeft, float boxOpen, float boxExt, bool isDepth2) =>
     bool   showCloseLine = isDepth2 ? showLine2 : showLine1
@@ -281,36 +237,93 @@ drawConfirmed(int dir, float anchor, int oldBar, int newBar, float closeLvl, int
         line.new(newBar, yBracket, newBar, yTick,    color = cisdBracketColor, width = 2, xloc = xloc.bar_index)
 
 // =====================================================================
-// Watch loops — recompute extreme + run + anchor every bar inside the
-// continuation HTF candle's LTF window
+// Pending slots
+// =====================================================================
+var int    p1Dir       = 0
+var int    p1Start     = na
+var float  p1CloseLvl  = na
+var int    p1CloseLeft = na
+var float  p1BoxOpen   = na
+var float  p1BoxExt    = na
+
+var int    p2Dir       = 0
+var int    p2Start     = na
+var float  p2CloseLvl  = na
+var int    p2CloseLeft = na
+var float  p2BoxOpen   = na
+var float  p2BoxExt    = na
+
+// =====================================================================
+// Watch FIRST — process existing pending setups before arming new ones
 // =====================================================================
 
-// Slot 1 — CISD inside C3 (after C2 reversal)
+// Slot 1
 if isAligned and p1Dir != 0 and barstate.isconfirmed
     int barsInto = bar_index - p1Start
     if barsInto >= 0 and barsInto < barsPerHtf
-        int extBar = findExtremeBar(p1Dir, barsInto)
-        [anch, oldR, newR] = findRunFromExtreme(extBar, p1Dir)
+        [anch, oldR, newR] = findCisdInWindow(p1Dir, p1Start)
         if not na(anch) and not na(oldR) and not na(newR)
             bool fired = (p1Dir == 1 and close > anch) or (p1Dir == -1 and close < anch)
             if fired
                 drawConfirmed(p1Dir, anch, oldR, newR, p1CloseLvl, p1CloseLeft, p1BoxOpen, p1BoxExt, false)
                 p1Dir := 0
     else if barsInto >= barsPerHtf
-        // C3 ended without CISD — discard, no visuals
         p1Dir := 0
 
-// Slot 2 — CISD inside C4 (after C3 reversal)
+// Slot 2
 if isAligned and p2Dir != 0 and barstate.isconfirmed
     int barsInto = bar_index - p2Start
     if barsInto >= 0 and barsInto < barsPerHtf
-        int extBar = findExtremeBar(p2Dir, barsInto)
-        [anch, oldR, newR] = findRunFromExtreme(extBar, p2Dir)
+        [anch, oldR, newR] = findCisdInWindow(p2Dir, p2Start)
         if not na(anch) and not na(oldR) and not na(newR)
             bool fired = (p2Dir == 1 and close > anch) or (p2Dir == -1 and close < anch)
             if fired
                 drawConfirmed(p2Dir, anch, oldR, newR, p2CloseLvl, p2CloseLeft, p2BoxOpen, p2BoxExt, true)
                 p2Dir := 0
     else if barsInto >= barsPerHtf
-        // C4 ended without CISD — discard
         p2Dir := 0
+
+// =====================================================================
+// Arm AFTER watch — slots are guaranteed clear if previous expired
+// =====================================================================
+
+// Arm slot 1 on C2 reversal
+if isAligned and inDisplay and (revBull1 or revBear1) and p1Dir == 0
+    bool bull   = revBull1
+    p1Dir       := bull ? 1 : -1
+    p1Start     := bar_index
+    p1BoxOpen   := currentHtfOpen
+    p1BoxExt    := bull ? htfL1 : htfH1
+    p1CloseLvl  := bull ? htfL2 : htfH2
+    p1CloseLeft := bar_index - barsPerHtf * 2
+
+// Arm slot 2 on C3 reversal
+if isAligned and inDisplay and (revBull2 or revBear2) and p2Dir == 0
+    bool bull   = revBull2
+    p2Dir       := bull ? 1 : -1
+    p2Start     := bar_index
+    p2BoxOpen   := currentHtfOpen
+    p2BoxExt    := bull ? htfL1 : htfH1
+    p2CloseLvl  := bull ? htfL3 : htfH3
+    p2CloseLeft := bar_index - barsPerHtf * 3
+
+// =====================================================================
+// On-arm-bar fast check — try to fire CISD on the same bar arming happened
+// (e.g. very first LTF bar of C3 already closes above an internal anchor)
+// =====================================================================
+
+if isAligned and barstate.isconfirmed and p1Dir != 0 and bar_index == p1Start
+    [anch, oldR, newR] = findCisdInWindow(p1Dir, p1Start)
+    if not na(anch) and not na(oldR) and not na(newR)
+        bool fired = (p1Dir == 1 and close > anch) or (p1Dir == -1 and close < anch)
+        if fired
+            drawConfirmed(p1Dir, anch, oldR, newR, p1CloseLvl, p1CloseLeft, p1BoxOpen, p1BoxExt, false)
+            p1Dir := 0
+
+if isAligned and barstate.isconfirmed and p2Dir != 0 and bar_index == p2Start
+    [anch, oldR, newR] = findCisdInWindow(p2Dir, p2Start)
+    if not na(anch) and not na(oldR) and not na(newR)
+        bool fired = (p2Dir == 1 and close > anch) or (p2Dir == -1 and close < anch)
+        if fired
+            drawConfirmed(p2Dir, anch, oldR, newR, p2CloseLvl, p2CloseLeft, p2BoxOpen, p2BoxExt, true)
+            p2Dir := 0
