@@ -8,19 +8,15 @@
 //   15m -> 1m  + 5m
 //
 // Strict validity rules:
-//   - HTF C2/C3 reversal is "valid" ONLY if CISD confirms in the
-//     continuation HTF candle on the aligned chart (LTF or Middle TF).
-//   - If CISD does not confirm by the end of that continuation candle,
-//     NOTHING is drawn for that setup.
-//
-// What renders, only when CISD confirms:
-//   - C2 / C3 closure line at the swept extreme (configurable colors)
-//   - Equilibrium box from open(continuation HTF) to midpoint
-//   - CISD anchor line (open of OLDEST candle in the consecutive run)
-//   - Run bracket above/below the consecutive run
-//
-// HTF opening line (vertical) is independent and renders on the LTF chart
-// regardless of CISD outcome.
+//   - C2 reversal (depth-1) is valid ONLY if CISD confirms in the
+//     continuation HTF candle (the C3 candle in user terminology) on
+//     the aligned chart (LTF or Middle TF).
+//   - C3 reversal (depth-2) is valid ONLY if CISD confirms in the
+//     continuation HTF candle (the C4 candle in user terminology).
+//   - Both are tracked INDEPENDENTLY. Each draws its own visuals only
+//     when its own CISD confirms.
+//   - If CISD does not confirm in the continuation candle, NOTHING is
+//     drawn for that setup.
 
 //@version=6
 indicator("Sweep Closure Sequencer MTF [SCS-MTF]", "SCS-MTF", overlay = true, max_lines_count = 500, max_boxes_count = 500)
@@ -30,8 +26,8 @@ indicator("Sweep Closure Sequencer MTF [SCS-MTF]", "SCS-MTF", overlay = true, ma
 // =====================================================================
 g_tf   = "Timeframe"
 g_bias = "Bias"
-g_lc2  = "Closure Line - C2 (depth 1)"
-g_lc3  = "Closure Line - C3 (depth 2)"
+g_lc2  = "C2 Reversal (depth 1)"
+g_lc3  = "C3 Reversal (depth 2)"
 g_box  = "Equilibrium Box"
 g_open = "HTF Opening Line"
 g_cisd = "CISD"
@@ -63,7 +59,7 @@ boxBearBorder = input.color(color.new(#2196f3, 50),"Bear box border",           
 boxBorderW    = input.int(1, "Border width", minval = 0, maxval = 3,                      group = g_box)
 boxExtraHtf   = input.int(1, "Extension (HTF bars)", minval = 1, maxval = 10,             group = g_box)
 
-// HTF opening line (vertical, LTF only)
+// HTF opening line
 showOpen      = input.bool(true,                  "Show HTF opening line",                group = g_open)
 openColor     = input.color(color.new(#ffcc00, 40),"Color",                               group = g_open)
 openWidth     = input.int(1, "Width", minval = 1, maxval = 5,                             group = g_open)
@@ -91,7 +87,7 @@ verticalExtendFn(string e) =>
     e == "Both" ? extend.both : e == "Up" ? extend.right : e == "Down" ? extend.left : extend.none
 
 // =====================================================================
-// Aligned timeframe map (Primary LTF + Middle TF)
+// Aligned timeframe map
 // =====================================================================
 alignedLtf   = htfStr == "15" ? "1"  : htfStr == "30" ? "3"  : htfStr == "60" ? "5"  : htfStr == "240" ? "15" : htfStr == "1D" ? "60"  : ""
 alignedMidTf = htfStr == "15" ? "5"  : htfStr == "30" ? "15" : htfStr == "60" ? "15" : htfStr == "240" ? "60" : htfStr == "1D" ? "240" : ""
@@ -124,7 +120,7 @@ if isNewHtfBar
     currentHtfOpen := open
 
 // =====================================================================
-// Reversal detection (HTF series)
+// Reversal detection
 // =====================================================================
 canEval = isNewHtfBar and not na(htfL2) and not na(htfH2) and not na(htfC1)
 
@@ -138,11 +134,8 @@ c2BearCont = canEval2 and htfH2 > htfH3 and htfC2 > htfH3
 revBull2 = canEval2 and allowBull and htfL1 < htfL3 and htfC1 > htfL3 and c2BullCont
 revBear2 = canEval2 and allowBear and htfH1 > htfH3 and htfC1 < htfH3 and c2BearCont
 
-bullFire = revBull1 or revBull2
-bearFire = revBear1 or revBear2
-
 // =====================================================================
-// HTF opening line (LTF only — independent of CISD)
+// HTF opening line (LTF only)
 // =====================================================================
 canOpen = isLtfChart and showOpen
 var line htfOpenLn = na
@@ -153,9 +146,8 @@ if canOpen and isNewHtfBar
     htfOpenLn := line.new(bar_index, low, bar_index, high, color = openColor, width = openWidth, style = lineStyleFn(openStyleStr), extend = verticalExtendFn(openExtendStr), xloc = xloc.bar_index)
 
 // =====================================================================
-// CISD detection helpers (run on whatever aligned chart we are on)
+// CISD detection helpers
 // =====================================================================
-
 findBullCisd() =>
     int   winSearch = barsPerHtf * 4
     int   lowBar    = bar_index - 1
@@ -231,25 +223,38 @@ findBearCisd() =>
     [anch, oldRun, newRun]
 
 // =====================================================================
-// Pending CISD state (per aligned chart)
+// Independent pending slots: depth-1 (C2 reversal) and depth-2 (C3 reversal)
 // =====================================================================
-var int    pendDir       = 0
-var float  pendAnchor    = na
-var int    pendOldBar    = na
-var int    pendNewBar    = na
-var int    pendStart     = na
-var int    pendDepth     = 0
-var float  pendCloseLvl  = na
-var int    pendCloseLeft = na
-var float  pendBoxOpen   = na
-var float  pendBoxExt    = na
 
-// On HTF reversal: arm pending state, draw nothing yet
-if isAligned and inDisplay and (bullFire or bearFire)
+// --- Slot 1: C2 reversal (depth 1) ---
+var int    p1Dir       = 0
+var float  p1Anchor    = na
+var int    p1OldBar    = na
+var int    p1NewBar    = na
+var int    p1Start     = na
+var float  p1CloseLvl  = na
+var int    p1CloseLeft = na
+var float  p1BoxOpen   = na
+var float  p1BoxExt    = na
+
+// --- Slot 2: C3 reversal (depth 2) ---
+var int    p2Dir       = 0
+var float  p2Anchor    = na
+var int    p2OldBar    = na
+var int    p2NewBar    = na
+var int    p2Start     = na
+var float  p2CloseLvl  = na
+var int    p2CloseLeft = na
+var float  p2BoxOpen   = na
+var float  p2BoxExt    = na
+
+// Arm slot 1 on C2 reversal
+if isAligned and inDisplay and (revBull1 or revBear1) and p1Dir == 0
+    bool bull = revBull1
     float a    = na
     int   oldR = na
     int   newR = na
-    if bullFire
+    if bull
         [aa, oo, nn] = findBullCisd()
         a    := aa
         oldR := oo
@@ -259,60 +264,99 @@ if isAligned and inDisplay and (bullFire or bearFire)
         a    := aa
         oldR := oo
         newR := nn
-
     if not na(a) and not na(oldR) and not na(newR)
-        pendDir       := bullFire ? 1 : -1
-        pendAnchor    := a
-        pendOldBar    := oldR
-        pendNewBar    := newR
-        pendStart     := bar_index
-        pendDepth     := (revBull2 or revBear2) ? 2 : 1
-        pendBoxOpen   := currentHtfOpen
-        pendBoxExt    := bullFire ? htfL1 : htfH1
-        pendCloseLvl  := pendDepth == 2 ? (bullFire ? htfL3 : htfH3) : (bullFire ? htfL2 : htfH2)
-        pendCloseLeft := pendDepth == 2 ? bar_index - barsPerHtf * 3 : bar_index - barsPerHtf * 2
+        p1Dir       := bull ? 1 : -1
+        p1Anchor    := a
+        p1OldBar    := oldR
+        p1NewBar    := newR
+        p1Start     := bar_index
+        p1BoxOpen   := currentHtfOpen
+        p1BoxExt    := bull ? htfL1 : htfH1
+        p1CloseLvl  := bull ? htfL2 : htfH2
+        p1CloseLeft := bar_index - barsPerHtf * 2
 
-// Watch for CISD trigger inside the continuation HTF candle
-if isAligned and pendDir != 0 and not na(pendAnchor) and barstate.isconfirmed and bar_index > pendStart
-    bool expired = bar_index - pendStart >= barsPerHtf
-    bool fired   = (pendDir == 1 and close > pendAnchor) or (pendDir == -1 and close < pendAnchor)
+// Arm slot 2 on C3 reversal
+if isAligned and inDisplay and (revBull2 or revBear2) and p2Dir == 0
+    bool bull = revBull2
+    float a    = na
+    int   oldR = na
+    int   newR = na
+    if bull
+        [aa, oo, nn] = findBullCisd()
+        a    := aa
+        oldR := oo
+        newR := nn
+    else
+        [aa, oo, nn] = findBearCisd()
+        a    := aa
+        oldR := oo
+        newR := nn
+    if not na(a) and not na(oldR) and not na(newR)
+        p2Dir       := bull ? 1 : -1
+        p2Anchor    := a
+        p2OldBar    := oldR
+        p2NewBar    := newR
+        p2Start     := bar_index
+        p2BoxOpen   := currentHtfOpen
+        p2BoxExt    := bull ? htfL1 : htfH1
+        p2CloseLvl  := bull ? htfL3 : htfH3
+        p2CloseLeft := bar_index - barsPerHtf * 3
 
+// =====================================================================
+// Drawing helper: emit all visuals for a confirmed CISD setup
+// =====================================================================
+drawConfirmed(int dir, float anchor, int oldBar, int newBar, float closeLvl, int closeLeft, float boxOpen, float boxExt, bool isDepth2) =>
+    bool showCloseLine = isDepth2 ? showLine2 : showLine1
+    color  cCol  = isDepth2 ? line2Color    : line1Color
+    int    cW    = isDepth2 ? line2Width    : line1Width
+    string cSt   = isDepth2 ? line2StyleStr : line1StyleStr
+    int    cEx   = isDepth2 ? line2Extra    : line1Extra
+
+    if showCloseLine
+        line.new(closeLeft, closeLvl, bar_index + barsPerHtf * cEx, closeLvl, color = cCol, width = cW, style = lineStyleFn(cSt), xloc = xloc.bar_index)
+
+    if showBox and not na(boxOpen) and not na(boxExt)
+        float eqMid = (boxOpen + boxExt) / 2.0
+        int   boxR  = bar_index + barsPerHtf * boxExtraHtf
+        if dir == 1
+            box.new(bar_index, boxOpen, boxR, eqMid, bgcolor = boxBullColor, border_color = boxBullBorder, border_width = boxBorderW, xloc = xloc.bar_index)
+        else
+            box.new(bar_index, eqMid, boxR, boxOpen, bgcolor = boxBearColor, border_color = boxBearBorder, border_width = boxBorderW, xloc = xloc.bar_index)
+
+    line.new(oldBar, anchor, bar_index, anchor, color = cisdAnchorColor, width = cisdAnchorWidth, style = lineStyleFn(cisdAnchorStyle), xloc = xloc.bar_index)
+
+    if cisdShowBracket
+        float span     = math.abs(high[bar_index - oldBar] - low[bar_index - oldBar])
+        float yBracket = dir == 1 ? open[bar_index - oldBar] + span * 0.4 : open[bar_index - oldBar] - span * 0.4
+        float yTick    = dir == 1 ? yBracket - span * 0.15 : yBracket + span * 0.15
+        line.new(oldBar, yBracket, newBar, yBracket, color = cisdBracketColor, width = 2, xloc = xloc.bar_index)
+        line.new(oldBar, yBracket, oldBar, yTick,    color = cisdBracketColor, width = 2, xloc = xloc.bar_index)
+        line.new(newBar, yBracket, newBar, yTick,    color = cisdBracketColor, width = 2, xloc = xloc.bar_index)
+
+// =====================================================================
+// Watch loops — each pending slot gets its own CISD watch in continuation
+// =====================================================================
+
+// Slot 1
+if isAligned and p1Dir != 0 and not na(p1Anchor) and barstate.isconfirmed and bar_index > p1Start
+    bool expired = bar_index - p1Start >= barsPerHtf
+    bool fired   = (p1Dir == 1 and close > p1Anchor) or (p1Dir == -1 and close < p1Anchor)
     if fired
-        bool isDepth2 = pendDepth == 2
-
-        // ─── Closure line ───
-        if (isDepth2 and showLine2) or (not isDepth2 and showLine1)
-            color  cCol = isDepth2 ? line2Color    : line1Color
-            int    cW   = isDepth2 ? line2Width    : line1Width
-            string cSt  = isDepth2 ? line2StyleStr : line1StyleStr
-            int    cEx  = isDepth2 ? line2Extra    : line1Extra
-            line.new(pendCloseLeft, pendCloseLvl, bar_index + barsPerHtf * cEx, pendCloseLvl, color = cCol, width = cW, style = lineStyleFn(cSt), xloc = xloc.bar_index)
-
-        // ─── Equilibrium box ───
-        if showBox and not na(pendBoxOpen) and not na(pendBoxExt)
-            float eqMid = (pendBoxOpen + pendBoxExt) / 2.0
-            int   boxR  = bar_index + barsPerHtf * boxExtraHtf
-            if pendDir == 1
-                box.new(bar_index, pendBoxOpen, boxR, eqMid, bgcolor = boxBullColor, border_color = boxBullBorder, border_width = boxBorderW, xloc = xloc.bar_index)
-            else
-                box.new(bar_index, eqMid, boxR, pendBoxOpen, bgcolor = boxBearColor, border_color = boxBearBorder, border_width = boxBorderW, xloc = xloc.bar_index)
-
-        // ─── CISD anchor line ───
-        line.new(pendOldBar, pendAnchor, bar_index, pendAnchor, color = cisdAnchorColor, width = cisdAnchorWidth, style = lineStyleFn(cisdAnchorStyle), xloc = xloc.bar_index)
-
-        // ─── Consecutive run bracket ───
-        if cisdShowBracket
-            float span     = math.abs(high[bar_index - pendOldBar] - low[bar_index - pendOldBar])
-            float yBracket = pendDir == 1 ? open[bar_index - pendOldBar] + span * 0.4 : open[bar_index - pendOldBar] - span * 0.4
-            float yTick    = pendDir == 1 ? yBracket - span * 0.15 : yBracket + span * 0.15
-            line.new(pendOldBar, yBracket, pendNewBar, yBracket, color = cisdBracketColor, width = 2, xloc = xloc.bar_index)
-            line.new(pendOldBar, yBracket, pendOldBar, yTick,    color = cisdBracketColor, width = 2, xloc = xloc.bar_index)
-            line.new(pendNewBar, yBracket, pendNewBar, yTick,    color = cisdBracketColor, width = 2, xloc = xloc.bar_index)
-
-        pendDir    := 0
-        pendAnchor := na
-
+        drawConfirmed(p1Dir, p1Anchor, p1OldBar, p1NewBar, p1CloseLvl, p1CloseLeft, p1BoxOpen, p1BoxExt, false)
+        p1Dir    := 0
+        p1Anchor := na
     if not fired and expired
-        // CISD failed inside the continuation candle — discard, no visuals
-        pendDir    := 0
-        pendAnchor := na
+        p1Dir    := 0
+        p1Anchor := na
+
+// Slot 2
+if isAligned and p2Dir != 0 and not na(p2Anchor) and barstate.isconfirmed and bar_index > p2Start
+    bool expired = bar_index - p2Start >= barsPerHtf
+    bool fired   = (p2Dir == 1 and close > p2Anchor) or (p2Dir == -1 and close < p2Anchor)
+    if fired
+        drawConfirmed(p2Dir, p2Anchor, p2OldBar, p2NewBar, p2CloseLvl, p2CloseLeft, p2BoxOpen, p2BoxExt, true)
+        p2Dir    := 0
+        p2Anchor := na
+    if not fired and expired
+        p2Dir    := 0
+        p2Anchor := na
