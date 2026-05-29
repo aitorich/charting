@@ -1,19 +1,26 @@
 // Sweep Closure Sequencer [SCS-MTF] + CISD-gated visuals
 //
-// Strict rules:
-//   - HTF C2/C3 reversal is "valid" ONLY if CISD confirms on the aligned LTF
-//     in the continuation HTF candle (the new HTF candle that opens after
-//     the reversal candle closed).
-//   - If CISD does not confirm, NOTHING is drawn for that setup.
-//   - Visuals are rendered on the aligned LTF chart only.
+// Aligned chart map (HTF -> Primary LTF + Middle TF):
+//   1D  -> 1H  + 4H
+//   4H  -> 15m + 1H
+//   1H  -> 5m  + 15m
+//   30m -> 3m  + 15m
+//   15m -> 1m  + 5m
 //
-// Drawn on CISD confirmation:
-//   - Closure line at the swept extreme (C2 low/high for depth 1, C1 low/high for depth 2)
+// Strict validity rules:
+//   - HTF C2/C3 reversal is "valid" ONLY if CISD confirms in the
+//     continuation HTF candle on the aligned chart (LTF or Middle TF).
+//   - If CISD does not confirm by the end of that continuation candle,
+//     NOTHING is drawn for that setup.
+//
+// What renders, only when CISD confirms:
+//   - C2 / C3 closure line at the swept extreme (configurable colors)
 //   - Equilibrium box from open(continuation HTF) to midpoint
-//   - Anchor line = open of the oldest candle in the consecutive run
+//   - CISD anchor line (open of OLDEST candle in the consecutive run)
 //   - Run bracket above/below the consecutive run
 //
-// HTF opening line (vertical) is independent and renders regardless.
+// HTF opening line (vertical) is independent and renders on the LTF chart
+// regardless of CISD outcome.
 
 //@version=6
 indicator("Sweep Closure Sequencer MTF [SCS-MTF]", "SCS-MTF", overlay = true, max_lines_count = 500, max_boxes_count = 500)
@@ -30,7 +37,7 @@ g_open = "HTF Opening Line"
 g_cisd = "CISD"
 g_disp = "Display"
 
-htfStr  = input.timeframe("240", "HTF (reversal source)", group = g_tf, tooltip = "Aligned LTF: 1D→1H, 240→15, 60→5, 30→3, 15→1")
+htfStr  = input.timeframe("240", "HTF (reversal source)", group = g_tf, tooltip = "Aligned LTF + Middle TF: 1D→1H+4H, 240→15+60, 60→5+15, 30→3+15, 15→1+5")
 biasStr = input.string("Auto", "Bias", options = ["Auto", "Bullish only", "Bearish only"], group = g_bias)
 
 // C2 closure
@@ -56,7 +63,7 @@ boxBearBorder = input.color(color.new(#2196f3, 50),"Bear box border",           
 boxBorderW    = input.int(1, "Border width", minval = 0, maxval = 3,                      group = g_box)
 boxExtraHtf   = input.int(1, "Extension (HTF bars)", minval = 1, maxval = 10,             group = g_box)
 
-// HTF opening line (vertical)
+// HTF opening line (vertical, LTF only)
 showOpen      = input.bool(true,                  "Show HTF opening line",                group = g_open)
 openColor     = input.color(color.new(#ffcc00, 40),"Color",                               group = g_open)
 openWidth     = input.int(1, "Width", minval = 1, maxval = 5,                             group = g_open)
@@ -84,17 +91,15 @@ verticalExtendFn(string e) =>
     e == "Both" ? extend.both : e == "Up" ? extend.right : e == "Down" ? extend.left : extend.none
 
 // =====================================================================
-// Aligned timeframe map (LTF chart only — visuals gate here)
-//   1D  -> 1H
-//   4H  -> 15m
-//   1H  -> 5m
-//   30m -> 3m
-//   15m -> 1m
+// Aligned timeframe map (Primary LTF + Middle TF)
 // =====================================================================
-alignedLtf = htfStr == "15" ? "1"  : htfStr == "30" ? "3"  : htfStr == "60" ? "5"  : htfStr == "240" ? "15" : htfStr == "1D" ? "60"  : ""
+alignedLtf   = htfStr == "15" ? "1"  : htfStr == "30" ? "3"  : htfStr == "60" ? "5"  : htfStr == "240" ? "15" : htfStr == "1D" ? "60"  : ""
+alignedMidTf = htfStr == "15" ? "5"  : htfStr == "30" ? "15" : htfStr == "60" ? "15" : htfStr == "240" ? "60" : htfStr == "1D" ? "240" : ""
 
 chartTf    = timeframe.period
-isLtfChart = (alignedLtf != "") and (chartTf == alignedLtf)
+isLtfChart = (alignedLtf   != "") and (chartTf == alignedLtf)
+isMidChart = (alignedMidTf != "") and (chartTf == alignedMidTf)
+isAligned  = isLtfChart or isMidChart
 
 htfSec     = timeframe.in_seconds(htfStr)
 chartSec   = timeframe.in_seconds()
@@ -119,7 +124,7 @@ if isNewHtfBar
     currentHtfOpen := open
 
 // =====================================================================
-// Reversal detection
+// Reversal detection (HTF series)
 // =====================================================================
 canEval = isNewHtfBar and not na(htfL2) and not na(htfH2) and not na(htfC1)
 
@@ -137,7 +142,7 @@ bullFire = revBull1 or revBull2
 bearFire = revBear1 or revBear2
 
 // =====================================================================
-// HTF opening line (LTF only, VERTICAL — independent of CISD)
+// HTF opening line (LTF only — independent of CISD)
 // =====================================================================
 canOpen = isLtfChart and showOpen
 var line htfOpenLn = na
@@ -148,19 +153,8 @@ if canOpen and isNewHtfBar
     htfOpenLn := line.new(bar_index, low, bar_index, high, color = openColor, width = openWidth, style = lineStyleFn(openStyleStr), extend = verticalExtendFn(openExtendStr), xloc = xloc.bar_index)
 
 // =====================================================================
-// CISD detection + GATED visuals (LTF only)
+// CISD detection helpers (run on whatever aligned chart we are on)
 // =====================================================================
-
-var int    pendDir       = 0
-var float  pendAnchor    = na
-var int    pendOldBar    = na
-var int    pendNewBar    = na
-var int    pendStart     = na
-var int    pendDepth     = 0
-var float  pendCloseLvl  = na
-var int    pendCloseLeft = na
-var float  pendBoxOpen   = na
-var float  pendBoxExt    = na
 
 findBullCisd() =>
     int   winSearch = barsPerHtf * 4
@@ -236,8 +230,22 @@ findBearCisd() =>
         anch := open[bar_index - oldRun]
     [anch, oldRun, newRun]
 
-// On HTF reversal (LTF chart): set pending state, draw nothing
-if isLtfChart and inDisplay and (bullFire or bearFire)
+// =====================================================================
+// Pending CISD state (per aligned chart)
+// =====================================================================
+var int    pendDir       = 0
+var float  pendAnchor    = na
+var int    pendOldBar    = na
+var int    pendNewBar    = na
+var int    pendStart     = na
+var int    pendDepth     = 0
+var float  pendCloseLvl  = na
+var int    pendCloseLeft = na
+var float  pendBoxOpen   = na
+var float  pendBoxExt    = na
+
+// On HTF reversal: arm pending state, draw nothing yet
+if isAligned and inDisplay and (bullFire or bearFire)
     float a    = na
     int   oldR = na
     int   newR = na
@@ -264,16 +272,15 @@ if isLtfChart and inDisplay and (bullFire or bearFire)
         pendCloseLvl  := pendDepth == 2 ? (bullFire ? htfL3 : htfH3) : (bullFire ? htfL2 : htfH2)
         pendCloseLeft := pendDepth == 2 ? bar_index - barsPerHtf * 3 : bar_index - barsPerHtf * 2
 
-// Watch for CISD trigger in the continuation HTF window (LTF bars after pendStart)
-if isLtfChart and pendDir != 0 and not na(pendAnchor) and barstate.isconfirmed and bar_index > pendStart
+// Watch for CISD trigger inside the continuation HTF candle
+if isAligned and pendDir != 0 and not na(pendAnchor) and barstate.isconfirmed and bar_index > pendStart
     bool expired = bar_index - pendStart >= barsPerHtf
     bool fired   = (pendDir == 1 and close > pendAnchor) or (pendDir == -1 and close < pendAnchor)
 
     if fired
-        // CISD confirmed — draw all visuals NOW
         bool isDepth2 = pendDepth == 2
 
-        // Closure line (C2 = depth 1 / C3 = depth 2)
+        // ─── Closure line ───
         if (isDepth2 and showLine2) or (not isDepth2 and showLine1)
             color  cCol = isDepth2 ? line2Color    : line1Color
             int    cW   = isDepth2 ? line2Width    : line1Width
@@ -281,7 +288,7 @@ if isLtfChart and pendDir != 0 and not na(pendAnchor) and barstate.isconfirmed a
             int    cEx  = isDepth2 ? line2Extra    : line1Extra
             line.new(pendCloseLeft, pendCloseLvl, bar_index + barsPerHtf * cEx, pendCloseLvl, color = cCol, width = cW, style = lineStyleFn(cSt), xloc = xloc.bar_index)
 
-        // Equilibrium box
+        // ─── Equilibrium box ───
         if showBox and not na(pendBoxOpen) and not na(pendBoxExt)
             float eqMid = (pendBoxOpen + pendBoxExt) / 2.0
             int   boxR  = bar_index + barsPerHtf * boxExtraHtf
@@ -290,10 +297,10 @@ if isLtfChart and pendDir != 0 and not na(pendAnchor) and barstate.isconfirmed a
             else
                 box.new(bar_index, eqMid, boxR, pendBoxOpen, bgcolor = boxBearColor, border_color = boxBearBorder, border_width = boxBorderW, xloc = xloc.bar_index)
 
-        // Anchor line
+        // ─── CISD anchor line ───
         line.new(pendOldBar, pendAnchor, bar_index, pendAnchor, color = cisdAnchorColor, width = cisdAnchorWidth, style = lineStyleFn(cisdAnchorStyle), xloc = xloc.bar_index)
 
-        // Consecutive run bracket
+        // ─── Consecutive run bracket ───
         if cisdShowBracket
             float span     = math.abs(high[bar_index - pendOldBar] - low[bar_index - pendOldBar])
             float yBracket = pendDir == 1 ? open[bar_index - pendOldBar] + span * 0.4 : open[bar_index - pendOldBar] - span * 0.4
@@ -302,11 +309,10 @@ if isLtfChart and pendDir != 0 and not na(pendAnchor) and barstate.isconfirmed a
             line.new(pendOldBar, yBracket, pendOldBar, yTick,    color = cisdBracketColor, width = 2, xloc = xloc.bar_index)
             line.new(pendNewBar, yBracket, pendNewBar, yTick,    color = cisdBracketColor, width = 2, xloc = xloc.bar_index)
 
-        // Clear pending
         pendDir    := 0
         pendAnchor := na
 
     if not fired and expired
-        // CISD failed in continuation candle — discard, no visuals
+        // CISD failed inside the continuation candle — discard, no visuals
         pendDir    := 0
         pendAnchor := na
