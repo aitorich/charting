@@ -12,21 +12,28 @@
 //     1D  -> 60
 //     1W  -> 240
 //
-// Logic (HTF series):
-//   bullish reversal: low(C3) < low(C2) and close(C3) > low(C2)
-//   bearish reversal: high(C3) > high(C2) and close(C3) < high(C2)
-//   where C3 = last-closed HTF candle, C2 = HTF candle before that.
-//   When a new HTF candle (C4) opens, evaluation runs.
+// Two reversal scenarios are detected:
 //
-// Visuals (no text, no labels):
-//   - Closure line at swept extreme (low/high of C2). Rendered on HTF chart,
-//     and optionally on aligned LTF chart.
-//   - Equilibrium box: from open(C4) to midpoint of [open(C4), low/high of C3].
-//     Aligned LTF chart ONLY.
-//   - HTF opening line at open of the currently developing HTF candle.
-//     Aligned LTF chart ONLY.
+//   Depth 1 - "C2 closure" (C3 reverses against C2):
+//     bullish: low(C3) < low(C2) and close(C3) > low(C2)
+//     bearish: high(C3) > high(C2) and close(C3) < high(C2)
+//     Closure line drawn at low(C2) / high(C2).
 //
-// Bias filter (Auto / Bullish only / Bearish only) gates which reversals draw.
+//   Depth 2 - "C3 closure" (C3 reverses against C1, after C2 was a continuation):
+//     bullish: C2 swept C1 low AND closed below (continuation),
+//              then C3 closed back above low(C1).
+//     bearish: mirror image.
+//     Closure line drawn at low(C1) / high(C1).
+//
+// Equilibrium box (LTF only) for either depth:
+//     range = open(new HTF bar) <-> low(C3) (bull) or high(C3) (bear)
+//     box   = from open(new HTF bar) to midpoint of the range
+//
+// HTF opening line (LTF only):
+//     horizontal at the open of the developing HTF bar, full extend right
+//     (or both/none, configurable). Color/width/style editable.
+//
+// No labels, no text. Lines and boxes only.
 
 //@version=6
 indicator("Sweep Closure Sequencer MTF [SCS-MTF]", "SCS-MTF", overlay = true, max_lines_count = 500, max_boxes_count = 500)
@@ -36,7 +43,8 @@ indicator("Sweep Closure Sequencer MTF [SCS-MTF]", "SCS-MTF", overlay = true, ma
 // =====================================================================
 g_tf   = "Timeframe"
 g_bias = "Bias"
-g_line = "Closure Line"
+g_lc2  = "Closure Line - C2 (depth 1)"
+g_lc3  = "Closure Line - C3 (depth 2)"
 g_box  = "Equilibrium Box (LTF only)"
 g_open = "HTF Opening Line (LTF only)"
 g_disp = "Display"
@@ -44,36 +52,54 @@ g_disp = "Display"
 htfStr  = input.timeframe("240", "HTF (reversal source)", group = g_tf, tooltip = "Aligned LTF: 15-1, 30-3, 60-5, 240-15, 1D-60, 1W-240")
 biasStr = input.string("Auto", "Bias", options = ["Auto", "Bullish only", "Bearish only"], group = g_bias)
 
-showLine     = input.bool(true,                  "Show closure line",         group = g_line)
-lineColor    = input.color(color.new(#ff1744, 0),"Color",                      group = g_line)
-lineWidth    = input.int(2, "Width", minval = 1, maxval = 5,                   group = g_line)
-lineExtra    = input.int(1, "Extension (HTF bars)", minval = 0, maxval = 10,   group = g_line)
-lineStyleStr = input.string("Solid", "Style", options = ["Solid","Dashed","Dotted"], group = g_line)
-lineOnLtf    = input.bool(true, "Also render on aligned LTF chart",            group = g_line)
+// C2 closure (depth-1)
+showLine1     = input.bool(true,                  "Show closure line",          group = g_lc2)
+line1Color    = input.color(color.new(#ff1744, 0),"Color",                       group = g_lc2)
+line1Width    = input.int(2, "Width", minval = 1, maxval = 5,                    group = g_lc2)
+line1Extra    = input.int(1, "Extension (HTF bars)", minval = 0, maxval = 10,    group = g_lc2)
+line1StyleStr = input.string("Solid", "Style", options = ["Solid","Dashed","Dotted"], group = g_lc2)
+line1OnLtf    = input.bool(true, "Also render on aligned LTF chart",             group = g_lc2)
 
-showBox       = input.bool(true,                  "Show equilibrium box",      group = g_box)
-boxBullColor  = input.color(color.new(#2196f3, 80),"Bull box fill",            group = g_box)
-boxBearColor  = input.color(color.new(#2196f3, 80),"Bear box fill",            group = g_box)
-boxBullBorder = input.color(color.new(#2196f3, 50),"Bull box border",          group = g_box)
-boxBearBorder = input.color(color.new(#2196f3, 50),"Bear box border",          group = g_box)
-boxBorderW    = input.int(1, "Border width", minval = 0, maxval = 3,           group = g_box)
-boxExtraHtf   = input.int(1, "Extension (HTF bars)", minval = 1, maxval = 10,  group = g_box)
+// C3 closure (depth-2)
+showLine2     = input.bool(true,                  "Show closure line",          group = g_lc3)
+line2Color    = input.color(color.new(#ff9100, 0),"Color",                       group = g_lc3)
+line2Width    = input.int(2, "Width", minval = 1, maxval = 5,                    group = g_lc3)
+line2Extra    = input.int(1, "Extension (HTF bars)", minval = 0, maxval = 10,    group = g_lc3)
+line2StyleStr = input.string("Solid", "Style", options = ["Solid","Dashed","Dotted"], group = g_lc3)
+line2OnLtf    = input.bool(true, "Also render on aligned LTF chart",             group = g_lc3)
 
-showOpen     = input.bool(true,                  "Show HTF opening line",      group = g_open)
-openColor    = input.color(color.new(#ff9800, 0),"Color",                      group = g_open)
-openWidth    = input.int(1, "Width", minval = 1, maxval = 4,                   group = g_open)
-openStyleStr = input.string("Solid", "Style", options = ["Solid","Dashed","Dotted"], group = g_open)
-openHistory  = input.bool(false, "Keep historical opens",                      group = g_open)
+// Equilibrium box
+showBox       = input.bool(true,                  "Show equilibrium box",        group = g_box)
+boxBullColor  = input.color(color.new(#2196f3, 80),"Bull box fill",              group = g_box)
+boxBearColor  = input.color(color.new(#2196f3, 80),"Bear box fill",              group = g_box)
+boxBullBorder = input.color(color.new(#2196f3, 50),"Bull box border",            group = g_box)
+boxBearBorder = input.color(color.new(#2196f3, 50),"Bear box border",            group = g_box)
+boxBorderW    = input.int(1, "Border width", minval = 0, maxval = 3,             group = g_box)
+boxExtraHtf   = input.int(1, "Extension (HTF bars)", minval = 1, maxval = 10,    group = g_box)
 
+// HTF opening line
+showOpen        = input.bool(true,                  "Show HTF opening line",     group = g_open)
+openColor       = input.color(color.new(#ff9800, 0),"Color",                      group = g_open)
+openWidth       = input.int(2, "Width", minval = 1, maxval = 5,                   group = g_open)
+openStyleStr    = input.string("Solid", "Style", options = ["Solid","Dashed","Dotted"], group = g_open)
+openExtendStr   = input.string("Right", "Extend", options = ["Right","Both","None"], group = g_open)
+openHistory     = input.bool(true, "Keep historical opens (one per past HTF candle)", group = g_open)
+
+// Display
 displayDays = input.int(7, "Last N days", minval = 1, maxval = 60, group = g_disp)
 
 // =====================================================================
-// Helpers / context
+// Helpers
 // =====================================================================
 lineStyleFn(string s) =>
     s == "Dashed" ? line.style_dashed : s == "Dotted" ? line.style_dotted : line.style_solid
 
-// Aligned LTF for the chosen HTF
+extendFn(string e) =>
+    e == "Both" ? extend.both : e == "Right" ? extend.right : e == "Left" ? extend.left : extend.none
+
+// =====================================================================
+// Context
+// =====================================================================
 alignedLtf = htfStr == "15"  ? "1"   : htfStr == "30"  ? "3"   : htfStr == "60"  ? "5"   : htfStr == "240" ? "15"  : htfStr == "1D"  ? "60"  : htfStr == "1W"  ? "240" : ""
 
 chartTf    = timeframe.period
@@ -81,81 +107,105 @@ isHtfChart = chartTf == htfStr
 isLtfChart = (alignedLtf != "") and (chartTf == alignedLtf)
 hasContext = isHtfChart or isLtfChart
 
-// Bars-per-HTF on the current chart
 htfSec     = timeframe.in_seconds(htfStr)
 chartSec   = timeframe.in_seconds()
 barsPerHtf = chartSec > 0 ? math.max(1, math.round(htfSec / chartSec)) : 1
 
-// Display window
-secPerDay   = 86400
-displayBars = math.round(displayDays * secPerDay / math.max(60, chartSec))
+displayBars = math.round(displayDays * 86400 / math.max(60, chartSec))
 inDisplay   = bar_index >= (last_bar_index - displayBars)
 
-// Bias gates
 allowBull = biasStr == "Auto" or biasStr == "Bullish only"
 allowBear = biasStr == "Auto" or biasStr == "Bearish only"
 
 // =====================================================================
 // HTF data
-//   [1] = last-closed HTF candle (C3 in user terminology)
-//   [2] = HTF candle before that  (C2 in user terminology)
+//   [1] = last-closed HTF candle  (C3 in user terminology)
+//   [2] = HTF candle before that  (C2)
+//   [3] = HTF candle before that  (C1)
 // =====================================================================
-htfH1 = request.security(syminfo.tickerid, htfStr, high[1],  lookahead = barmerge.lookahead_on)
-htfL1 = request.security(syminfo.tickerid, htfStr, low[1],   lookahead = barmerge.lookahead_on)
-htfC1 = request.security(syminfo.tickerid, htfStr, close[1], lookahead = barmerge.lookahead_on)
-htfH2 = request.security(syminfo.tickerid, htfStr, high[2],  lookahead = barmerge.lookahead_on)
-htfL2 = request.security(syminfo.tickerid, htfStr, low[2],   lookahead = barmerge.lookahead_on)
-htfO0 = request.security(syminfo.tickerid, htfStr, open,     lookahead = barmerge.lookahead_off)
+[htfH1, htfL1, htfC1, htfH2, htfL2, htfC2, htfH3, htfL3] = request.security(syminfo.tickerid, htfStr, [high[1], low[1], close[1], high[2], low[2], close[2], high[3], low[3]], lookahead = barmerge.lookahead_on)
 
 htfStartT   = time(htfStr)
 isNewHtfBar = ta.change(htfStartT) != 0
 
-// =====================================================================
-// Reversal detection (fires on the chart bar where a new HTF bar starts)
-// =====================================================================
-canEvaluate = isNewHtfBar and not na(htfL1) and not na(htfL2) and not na(htfH1) and not na(htfH2) and not na(htfC1)
-
-revBull = canEvaluate and allowBull and htfL1 < htfL2 and htfC1 > htfL2
-revBear = canEvaluate and allowBear and htfH1 > htfH2 and htfC1 < htfH2
+// Capture the developing HTF bar's open from LTF/HTF chart open at boundary.
+var float currentHtfOpen = na
+if isNewHtfBar
+    currentHtfOpen := open
 
 // =====================================================================
-// Closure line  (at swept extreme = C2 low / C2 high)
+// Reversal detection (fires on the LTF bar where a new HTF bar starts)
 // =====================================================================
-canRenderLine = hasContext and (isHtfChart or (isLtfChart and lineOnLtf))
+canEval = isNewHtfBar and not na(htfL2) and not na(htfH2) and not na(htfC1)
 
-if showLine and canRenderLine and inDisplay
-    if revBull
-        line.new(bar_index - barsPerHtf * 2, htfL2, bar_index + barsPerHtf * lineExtra, htfL2, color = lineColor, width = lineWidth, style = lineStyleFn(lineStyleStr), xloc = xloc.bar_index)
-    if revBear
-        line.new(bar_index - barsPerHtf * 2, htfH2, bar_index + barsPerHtf * lineExtra, htfH2, color = lineColor, width = lineWidth, style = lineStyleFn(lineStyleStr), xloc = xloc.bar_index)
+// Depth-1: C3 reverses against C2
+revBull1 = canEval and allowBull and htfL1 < htfL2 and htfC1 > htfL2
+revBear1 = canEval and allowBear and htfH1 > htfH2 and htfC1 < htfH2
 
-// =====================================================================
-// Equilibrium box (aligned LTF only)
-//   leg: open(C4)=htfO0  <->  low(C3)=htfL1  (or high(C3)=htfH1)
-//   box: half range, from open(C4) to midpoint
-// =====================================================================
-canRenderBox = isLtfChart and showBox
+// Depth-2: C3 reverses against C1 (only when C2 was a continuation closure of C1)
+canEval2     = canEval and not na(htfL3) and not na(htfH3) and not na(htfC2)
+c2BullCont   = htfL2 < htfL3 and htfC2 < htfL3   // C2 swept C1 low AND closed below
+c2BearCont   = htfH2 > htfH3 and htfC2 > htfH3   // C2 swept C1 high AND closed above
 
-if canRenderBox and inDisplay
-    if revBull
-        eqMid = (htfO0 + htfL1) / 2.0
-        box.new(bar_index, htfO0, bar_index + barsPerHtf * boxExtraHtf, eqMid, bgcolor = boxBullColor, border_color = boxBullBorder, border_width = boxBorderW, xloc = xloc.bar_index)
-    if revBear
-        eqMid = (htfO0 + htfH1) / 2.0
-        box.new(bar_index, eqMid, bar_index + barsPerHtf * boxExtraHtf, htfO0, bgcolor = boxBearColor, border_color = boxBearBorder, border_width = boxBorderW, xloc = xloc.bar_index)
+revBull2 = canEval2 and allowBull and htfL1 < htfL3 and htfC1 > htfL3 and c2BullCont
+revBear2 = canEval2 and allowBear and htfH1 > htfH3 and htfC1 < htfH3 and c2BearCont
 
 // =====================================================================
-// HTF opening line (aligned LTF only)
+// Closure line - depth 1 (at low(C2) / high(C2))
 // =====================================================================
-canRenderOpen = isLtfChart and showOpen
+canRender1 = hasContext and (isHtfChart or (isLtfChart and line1OnLtf))
 
-var line curOpenLine = na
+if showLine1 and canRender1 and inDisplay
+    if revBull1
+        line.new(bar_index - barsPerHtf * 2, htfL2, bar_index + barsPerHtf * line1Extra, htfL2, color = line1Color, width = line1Width, style = lineStyleFn(line1StyleStr), xloc = xloc.bar_index)
+    if revBear1
+        line.new(bar_index - barsPerHtf * 2, htfH2, bar_index + barsPerHtf * line1Extra, htfH2, color = line1Color, width = line1Width, style = lineStyleFn(line1StyleStr), xloc = xloc.bar_index)
 
-if canRenderOpen
-    if isNewHtfBar
-        if not na(curOpenLine)
-            line.set_x2(curOpenLine, bar_index - 1)
-            line.set_extend(curOpenLine, extend.none)
-            if not openHistory
-                line.delete(curOpenLine)
-        curOpenLine := line.new(bar_index, htfO0, bar_index, htfO0, color = openColor, width = openWidth, style = lineStyleFn(openStyleStr), extend = extend.right, xloc = xloc.bar_index)
+// =====================================================================
+// Closure line - depth 2 (at low(C1) / high(C1))
+// =====================================================================
+canRender2 = hasContext and (isHtfChart or (isLtfChart and line2OnLtf))
+
+if showLine2 and canRender2 and inDisplay
+    if revBull2
+        line.new(bar_index - barsPerHtf * 3, htfL3, bar_index + barsPerHtf * line2Extra, htfL3, color = line2Color, width = line2Width, style = lineStyleFn(line2StyleStr), xloc = xloc.bar_index)
+    if revBear2
+        line.new(bar_index - barsPerHtf * 3, htfH3, bar_index + barsPerHtf * line2Extra, htfH3, color = line2Color, width = line2Width, style = lineStyleFn(line2StyleStr), xloc = xloc.bar_index)
+
+// =====================================================================
+// Equilibrium box (LTF only)
+//   Always uses C3's wick low/high as the swept extreme reference,
+//   measured from open of the new HTF bar (C4).
+//   Drawn once per evaluation if either depth-1 OR depth-2 fires.
+// =====================================================================
+canBox = isLtfChart and showBox
+
+bullFire = revBull1 or revBull2
+bearFire = revBear1 or revBear2
+
+if canBox and inDisplay and not na(currentHtfOpen)
+    if bullFire and not na(htfL1)
+        eqMid = (currentHtfOpen + htfL1) / 2.0
+        box.new(bar_index, currentHtfOpen, bar_index + barsPerHtf * boxExtraHtf, eqMid, bgcolor = boxBullColor, border_color = boxBullBorder, border_width = boxBorderW, xloc = xloc.bar_index)
+    if bearFire and not na(htfH1)
+        eqMid = (currentHtfOpen + htfH1) / 2.0
+        box.new(bar_index, eqMid, bar_index + barsPerHtf * boxExtraHtf, currentHtfOpen, bgcolor = boxBearColor, border_color = boxBearBorder, border_width = boxBorderW, xloc = xloc.bar_index)
+
+// =====================================================================
+// HTF opening line (LTF only, full horizontal)
+//   On each new HTF bar:
+//     - Close out the previous current line: either delete or freeze (history)
+//     - Draw a fresh horizontal line at the new HTF open, extending right
+// =====================================================================
+canOpen = isLtfChart and showOpen
+var line htfOpenLn = na
+
+if canOpen
+    if isNewHtfBar and not na(currentHtfOpen)
+        if not na(htfOpenLn)
+            if openHistory
+                line.set_x2(htfOpenLn, bar_index - 1)
+                line.set_extend(htfOpenLn, extend.none)
+            else
+                line.delete(htfOpenLn)
+        htfOpenLn := line.new(bar_index, currentHtfOpen, bar_index + 1, currentHtfOpen, color = openColor, width = openWidth, style = lineStyleFn(openStyleStr), extend = extendFn(openExtendStr), xloc = xloc.bar_index)
