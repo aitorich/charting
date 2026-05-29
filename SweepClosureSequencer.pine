@@ -1,6 +1,6 @@
-// Sweep Closure Sequencer [SCS-MTF]
+// Sweep Closure Sequencer [SCS-MTF] + CISD
 //@version=6
-indicator("Sweep Closure Sequencer MTF [SCS-MTF]", "SCS-MTF", overlay = true, max_lines_count = 500, max_boxes_count = 500)
+indicator("Sweep Closure Sequencer MTF [SCS-MTF]", "SCS-MTF", overlay = true, max_lines_count = 500, max_boxes_count = 500, max_labels_count = 50)
 
 // =====================================================================
 // Inputs
@@ -11,6 +11,7 @@ g_lc2  = "Closure Line - C2 (depth 1)"
 g_lc3  = "Closure Line - C3 (depth 2)"
 g_box  = "Equilibrium Box (LTF + Middle TF only)"
 g_open = "HTF Opening Line (LTF only)"
+g_cisd = "CISD (LTF only)"
 g_disp = "Display"
 
 htfStr  = input.timeframe("240", "HTF (reversal source)", group = g_tf, tooltip = "Aligned LTF + Middle TF: 1D→1H+4H, 240→15+60, 60→5+15, 30→3+15, 15→1+5")
@@ -49,6 +50,17 @@ openStyleStr  = input.string("Dotted", "Style", options = ["Solid","Dashed","Dot
 openExtendStr = input.string("Both", "Extend", options = ["Both","Up","Down","None"],     group = g_open)
 openHistory   = input.bool(true, "Keep historical opens",                                 group = g_open)
 
+// CISD
+showCisd        = input.bool(true,                  "Show CISD anchor + trigger",         group = g_cisd)
+cisdAnchorColor = input.color(color.new(#2563eb, 0),"Anchor line color",                  group = g_cisd)
+cisdAnchorWidth = input.int(2, "Anchor line width", minval = 1, maxval = 4,               group = g_cisd)
+cisdAnchorStyle = input.string("Dashed", "Anchor line style", options = ["Solid","Dashed","Dotted"], group = g_cisd)
+cisdMarkBull    = input.color(color.new(#16a34a, 0),"Bullish trigger color",              group = g_cisd)
+cisdMarkBear    = input.color(color.new(#dc2626, 0),"Bearish trigger color",              group = g_cisd)
+cisdShowBracket = input.bool(true,                  "Show consecutive run bracket",       group = g_cisd)
+cisdBracketColor= input.color(color.new(#7c3aed, 0),"Run bracket color",                  group = g_cisd)
+cisdMaxBars     = input.int(60, "Max LTF bars to wait for CISD trigger", minval = 5, maxval = 500, group = g_cisd)
+
 // Display
 displayDays = input.int(7, "Last N days", minval = 1, maxval = 60, group = g_disp)
 
@@ -63,12 +75,12 @@ verticalExtendFn(string e) =>
 
 // =====================================================================
 // Aligned timeframe map (Primary LTF + Middle TF)
-// =====================================================================
 //   1D  -> 1H  + 4H
 //   4H  -> 15m + 1H
 //   1H  -> 5m  + 15m
 //   30m -> 3m  + 15m
 //   15m -> 1m  + 5m
+// =====================================================================
 alignedLtf    = htfStr == "15" ? "1"  : htfStr == "30" ? "3"  : htfStr == "60" ? "5"  : htfStr == "240" ? "15" : htfStr == "1D" ? "60"  : ""
 alignedMidTf  = htfStr == "15" ? "5"  : htfStr == "30" ? "15" : htfStr == "60" ? "15" : htfStr == "240" ? "60" : htfStr == "1D" ? "240" : ""
 
@@ -137,7 +149,7 @@ if showLine2 and canRender2 and inDisplay
         line.new(bar_index - barsPerHtf * 3, htfH3, bar_index + barsPerHtf * line2Extra, htfH3, color = line2Color, width = line2Width, style = lineStyleFn(line2StyleStr), xloc = xloc.bar_index)
 
 // =====================================================================
-// Equilibrium box  (Primary LTF AND Middle TF only — never on HTF)
+// Equilibrium box  (Primary LTF + Middle TF only)
 // =====================================================================
 canBox = (isLtfChart or isMidChart) and showBox
 
@@ -152,7 +164,7 @@ if canBox and inDisplay and not na(currentHtfOpen) and (bullFire or bearFire)
         box.new(boxLeft, eqMid, boxRight, currentHtfOpen, bgcolor = boxBearColor, border_color = boxBearBorder, border_width = boxBorderW, xloc = xloc.bar_index)
 
 // =====================================================================
-// HTF opening line (Primary LTF only, VERTICAL line)
+// HTF opening line (Primary LTF only, VERTICAL)
 // =====================================================================
 canOpen = isLtfChart and showOpen
 var line htfOpenLn = na
@@ -161,3 +173,172 @@ if canOpen and isNewHtfBar
     if not openHistory and not na(htfOpenLn)
         line.delete(htfOpenLn)
     htfOpenLn := line.new(bar_index, low, bar_index, high, color = openColor, width = openWidth, style = lineStyleFn(openStyleStr), extend = verticalExtendFn(openExtendStr), xloc = xloc.bar_index)
+
+// =====================================================================
+// CISD  (aligned LTF only)
+//
+// Triggered by an HTF reversal (revBull1/2 or revBear1/2).
+// On the LTF chart we walk through the just-closed HTF window and find:
+//   - bullish CISD: lowest low in that window, then the consecutive bearish
+//     run terminating at/before the low. Anchor = open of OLDEST in run.
+//   - bearish CISD: highest high, consecutive bullish run, anchor = open of
+//     OLDEST in run.
+// CISD fires when the LTF close crosses through the anchor (strict).
+// =====================================================================
+canCisd = isLtfChart and showCisd
+
+// Tracking for the previous-just-closed HTF window: bars span =
+// [bar_index - barsPerHtf, bar_index - 1] when isNewHtfBar fires.
+// We scan that range on the LTF.
+
+// State for active CISD setup (only one at a time; new HTF reversal overrides)
+var int    cisdDir       = 0       // +1 bullish, -1 bearish, 0 idle
+var float  cisdAnchor    = na
+var int    cisdRunOldBar = na      // bar_index of OLDEST run candle
+var int    cisdRunNewBar = na      // bar_index of LATEST run candle
+var int    cisdStartBar  = na      // when setup armed
+var bool   cisdFired     = false
+var line   cisdAnchorLn  = na
+var line   cisdBracketLn = na
+var line   cisdRunLeftLn = na
+var line   cisdRunRightLn= na
+var label  cisdMark      = na
+
+// Find anchor + run for bullish CISD (just-closed HTF window)
+findBullCisd() =>
+    int    winStart = bar_index - barsPerHtf
+    int    winEnd   = bar_index - 1
+    int    lowBar   = winEnd
+    float  lowVal   = low[1]
+    if barsPerHtf > 1
+        for i = 1 to barsPerHtf - 1
+            v = low[i + 1]
+            if not na(v) and v < lowVal
+                lowVal := v
+                lowBar := bar_index - i - 1
+    // walk back from lowBar to nearest bearish (red) candle
+    int  iter   = lowBar
+    int  newRun = na
+    int  oldRun = na
+    float anch  = na
+    int  guard  = 0
+    while iter >= winStart - barsPerHtf and guard < 200
+        int off = bar_index - iter
+        if off >= 0
+            if close[off] < open[off]
+                newRun := iter
+                break
+        iter -= 1
+        guard += 1
+    if not na(newRun)
+        // extend backward through consecutive reds
+        oldRun := newRun
+        int j = newRun - 1
+        int g2 = 0
+        while j >= winStart - barsPerHtf and g2 < 200
+            int off = bar_index - j
+            if off >= 0 and close[off] < open[off]
+                oldRun := j
+                j -= 1
+                g2 += 1
+            else
+                break
+        anch := open[bar_index - oldRun]
+    [anch, oldRun, newRun]
+
+findBearCisd() =>
+    int    winStart = bar_index - barsPerHtf
+    int    winEnd   = bar_index - 1
+    int    hiBar    = winEnd
+    float  hiVal    = high[1]
+    if barsPerHtf > 1
+        for i = 1 to barsPerHtf - 1
+            v = high[i + 1]
+            if not na(v) and v > hiVal
+                hiVal := v
+                hiBar := bar_index - i - 1
+    int  iter   = hiBar
+    int  newRun = na
+    int  oldRun = na
+    float anch  = na
+    int  guard  = 0
+    while iter >= winStart - barsPerHtf and guard < 200
+        int off = bar_index - iter
+        if off >= 0
+            if close[off] > open[off]
+                newRun := iter
+                break
+        iter -= 1
+        guard += 1
+    if not na(newRun)
+        oldRun := newRun
+        int j = newRun - 1
+        int g2 = 0
+        while j >= winStart - barsPerHtf and g2 < 200
+            int off = bar_index - j
+            if off >= 0 and close[off] > open[off]
+                oldRun := j
+                j -= 1
+                g2 += 1
+            else
+                break
+        anch := open[bar_index - oldRun]
+    [anch, oldRun, newRun]
+
+// Arm CISD on a fresh HTF reversal
+if canCisd and inDisplay and (bullFire or bearFire)
+    // clear previous drawings if any
+    if not na(cisdAnchorLn)
+        line.delete(cisdAnchorLn)
+        cisdAnchorLn := na
+    if not na(cisdBracketLn)
+        line.delete(cisdBracketLn)
+        cisdBracketLn := na
+    if not na(cisdRunLeftLn)
+        line.delete(cisdRunLeftLn)
+        cisdRunLeftLn := na
+    if not na(cisdRunRightLn)
+        line.delete(cisdRunRightLn)
+        cisdRunRightLn := na
+    if not na(cisdMark)
+        label.delete(cisdMark)
+        cisdMark := na
+
+    [a, oldR, newR] = bullFire ? findBullCisd() : findBearCisd()
+
+    if not na(a) and not na(oldR) and not na(newR)
+        cisdDir       := bullFire ? 1 : -1
+        cisdAnchor    := a
+        cisdRunOldBar := oldR
+        cisdRunNewBar := newR
+        cisdStartBar  := bar_index
+        cisdFired     := false
+
+        // anchor line spanning from oldest run candle to bar_index + reasonable extension
+        cisdAnchorLn := line.new(oldR, a, bar_index + cisdMaxBars, a, color = cisdAnchorColor, width = cisdAnchorWidth, style = lineStyleFn(cisdAnchorStyle), xloc = xloc.bar_index)
+
+        // bracket above (bullish) or below (bearish) the run
+        if cisdShowBracket
+            float yBracket = cisdDir == 1 ? math.max(open[bar_index - oldR], open[bar_index - newR]) + (high[bar_index - oldR] - low[bar_index - oldR]) * 0.4 : math.min(open[bar_index - oldR], open[bar_index - newR]) - (high[bar_index - oldR] - low[bar_index - oldR]) * 0.4
+            cisdBracketLn := line.new(oldR, yBracket, newR, yBracket, color = cisdBracketColor, width = 2, style = line.style_solid, xloc = xloc.bar_index)
+            // small ticks
+            cisdRunLeftLn  := line.new(oldR, yBracket, oldR, cisdDir == 1 ? yBracket - (high[bar_index - oldR] - low[bar_index - oldR]) * 0.15 : yBracket + (high[bar_index - oldR] - low[bar_index - oldR]) * 0.15, color = cisdBracketColor, width = 2, xloc = xloc.bar_index)
+            cisdRunRightLn := line.new(newR, yBracket, newR, cisdDir == 1 ? yBracket - (high[bar_index - oldR] - low[bar_index - oldR]) * 0.15 : yBracket + (high[bar_index - oldR] - low[bar_index - oldR]) * 0.15, color = cisdBracketColor, width = 2, xloc = xloc.bar_index)
+
+// Watch forward for trigger
+if canCisd and not cisdFired and cisdDir != 0 and not na(cisdAnchor) and barstate.isconfirmed
+    if bar_index - cisdStartBar > cisdMaxBars
+        // expire
+        cisdDir       := 0
+        cisdAnchor    := na
+        cisdFired     := false
+    else
+        bool fired = (cisdDir == 1 and close > cisdAnchor) or (cisdDir == -1 and close < cisdAnchor)
+        if fired
+            cisdFired := true
+            // close anchor line at trigger bar
+            if not na(cisdAnchorLn)
+                line.set_x2(cisdAnchorLn, bar_index)
+            // marker triangle
+            cisdMark := label.new(bar_index, close, "", style = cisdDir == 1 ? label.style_triangleup : label.style_triangledown, color = cisdDir == 1 ? cisdMarkBull : cisdMarkBear, size = size.tiny, yloc = cisdDir == 1 ? yloc.belowbar : yloc.abovebar)
+            cisdDir := 0
