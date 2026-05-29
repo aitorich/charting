@@ -1,93 +1,94 @@
 // Sweep Closure Sequencer [SCS]
 // =============================
-// Detects 2-bar sweep closures: a candle that takes the prior reference's
-// extreme and either closes back beyond it (Reversal) or stays past it
-// (Continuation). On every sweep it draws a single horizontal closure line
-// at the swept extreme. On Reversal it also draws an equilibrium box from
-// the next bar's open to the midpoint of the leg (open(next) <-> swept extreme).
+// Visual style modeled after Fractal Candle Closure
+// (feat/smt-quarter-sequences branch).
 //
-// No text, no labels. Lines and boxes only.
+// Logic - immediate C1/C2 detection (no rolling state machine):
+//   Bullish reversal: low < low[1] and close > low[1]
+//   Bearish reversal: high > high[1] and close < high[1]
+//
+// Drawings:
+//   - Closure line at the swept extreme on the C2 bar
+//   - Equilibrium box on the next (C3) bar, from C3.open to the midpoint
+//     of [open(C3), low(C2)] (bullish) or [open(C3), high(C2)] (bearish)
+//
+// No labels, no text. Only lines and boxes.
 
 //@version=6
 indicator("Sweep Closure Sequencer [SCS]", "SCS", overlay = true, max_lines_count = 500, max_boxes_count = 500)
 
 // =====================================================================
-// Inputs
+// Display
 // =====================================================================
 g_disp = "Display"
-g_col  = "Colors"
-
-show_shelf = input.bool(true, "Show closure line",        group = g_disp)
-show_eq    = input.bool(true, "Show equilibrium box",     group = g_disp)
-eq_extend  = input.int(10,    "Eq box extension (bars)",  minval = 1, maxval = 500, group = g_disp)
-
-c_shelf     = input.color(color.new(color.black, 0),  "Closure line",       group = g_col)
-w_shelf     = input.int(2, "Closure line width", minval = 1, maxval = 4,    group = g_col)
-c_eq_bull   = input.color(color.new(color.green, 70), "Eq box (bull rev)",  group = g_col)
-c_eq_bear   = input.color(color.new(color.red,   70), "Eq box (bear rev)",  group = g_col)
-c_eq_border = input.color(color.new(color.gray,  50), "Eq box border",      group = g_col)
+displayDays = input.int(3, "Show Last N Days", minval = 1, maxval = 30, group = g_disp)
 
 // =====================================================================
-// State - sentinel values, no na for int vars
+// Closure line
 // =====================================================================
-var int   bearIdx     = -1
-var float bearLow     = 0.0
-var int   bullIdx     = -1
-var float bullHigh    = 0.0
-
-var int   pendBullBar = -1
-var float pendBullLow = 0.0
-var int   pendBearBar = -1
-var float pendBearHi  = 0.0
+g_line       = "Closure Line"
+showLine     = input.bool(true, "Show Closure Line",                                     group = g_line)
+lineColor    = input.color(color.new(#ff1744, 0), "Line Color",                          group = g_line)
+lineWidth    = input.int(1, "Line Width", minval = 1, maxval = 5,                        group = g_line)
+lineStyleStr = input.string("Solid", "Line Style", options = ["Solid", "Dashed", "Dotted"], group = g_line)
+lineExtra    = input.int(1, "Line Extra Bars", minval = 0, maxval = 10,                  group = g_line)
 
 // =====================================================================
-// Lazy initialise on the first bar where we have valid data
+// Equilibrium box
 // =====================================================================
-if bearIdx == -1
-    bearIdx  := bar_index
-    bearLow  := low
-if bullIdx == -1
-    bullIdx  := bar_index
-    bullHigh := high
+g_eq         = "Equilibrium Box"
+showEq       = input.bool(true, "Show Equilibrium Box",                                  group = g_eq)
+eqBullColor  = input.color(color.new(#2196f3, 80), "Bull Box Color",                     group = g_eq)
+eqBearColor  = input.color(color.new(#2196f3, 80), "Bear Box Color",                     group = g_eq)
+eqBullBorder = input.color(color.new(#2196f3, 50), "Bull Border",                        group = g_eq)
+eqBearBorder = input.color(color.new(#2196f3, 50), "Bear Border",                        group = g_eq)
+eqBorderW    = input.int(1, "Border Width", minval = 0, maxval = 3,                      group = g_eq)
+eqExtra      = input.int(2, "Box Extra Bars", minval = 0, maxval = 20,                   group = g_eq)
 
 // =====================================================================
-// Per-bar evaluation (on close)
+// Helpers
 // =====================================================================
-if barstate.isconfirmed and bar_index > 0
-
-    // ---- Bearish ref: low sweep -> bullish reversal candidate ----
-    if bearIdx >= 0 and bar_index > bearIdx
-        if low < bearLow
-            if show_shelf
-                line.new(bearIdx, bearLow, bar_index, bearLow, xloc = xloc.bar_index, color = c_shelf, width = w_shelf)
-            if close >= bearLow
-                pendBullBar := bar_index
-                pendBullLow := low
-            bearIdx := bar_index
-            bearLow := low
-
-    // ---- Bullish ref: high sweep -> bearish reversal candidate ----
-    if bullIdx >= 0 and bar_index > bullIdx
-        if high > bullHigh
-            if show_shelf
-                line.new(bullIdx, bullHigh, bar_index, bullHigh, xloc = xloc.bar_index, color = c_shelf, width = w_shelf)
-            if close <= bullHigh
-                pendBearBar := bar_index
-                pendBearHi  := high
-            bullIdx  := bar_index
-            bullHigh := high
+lineStyleFn(string s) =>
+    s == "Dashed" ? line.style_dashed : s == "Dotted" ? line.style_dotted : line.style_solid
 
 // =====================================================================
-// Equilibrium boxes - drawn on the bar AFTER the reversal so we can
-// reference that bar's open price.
+// Display window (last N days only)
 // =====================================================================
-if show_eq
-    if pendBullBar >= 0 and bar_index == pendBullBar + 1
-        mid = (open + pendBullLow) / 2.0
-        box.new(left = bar_index, top = math.max(open, mid), right = bar_index + eq_extend, bottom = math.min(open, mid), xloc = xloc.bar_index, bgcolor = c_eq_bull, border_color = c_eq_border)
-        pendBullBar := -1
+barsPerDay  = timeframe.in_seconds() > 0 ? math.round(86400 / timeframe.in_seconds()) : 24
+displayBars = displayDays * barsPerDay
+inDisplay   = bar_index >= (last_bar_index - displayBars)
 
-    if pendBearBar >= 0 and bar_index == pendBearBar + 1
-        mid = (open + pendBearHi) / 2.0
-        box.new(left = bar_index, top = math.max(open, mid), right = bar_index + eq_extend, bottom = math.min(open, mid), xloc = xloc.bar_index, bgcolor = c_eq_bear, border_color = c_eq_border)
-        pendBearBar := -1
+// =====================================================================
+// C2 reversal detection (immediate, just like fractal_candle_closure.pine)
+// =====================================================================
+bool revBull = (low  < low[1])  and (close > low[1])    // bullish reversal: swept C1 low, closed back above
+bool revBear = (high > high[1]) and (close < high[1])   // bearish reversal: swept C1 high, closed back below
+
+bool prevRevBull = revBull[1]
+bool prevRevBear = revBear[1]
+
+// =====================================================================
+// Equilibrium midpoints
+//   bullish: range [low[1], open]   midpoint = low[1] + (open - low[1])/2
+//   bearish: range [open, high[1]]  midpoint = high[1] - (high[1] - open)/2
+// =====================================================================
+float bullEq = low[1]  + (open - low[1])  / 2.0
+float bearEq = high[1] - (high[1] - open) / 2.0
+
+// =====================================================================
+// Draw closure line on the C2 bar
+// =====================================================================
+if showLine and revBull and inDisplay
+    line.new(bar_index - 1, low[1], bar_index + lineExtra, low[1], color = lineColor, width = lineWidth, style = lineStyleFn(lineStyleStr))
+
+if showLine and revBear and inDisplay
+    line.new(bar_index - 1, high[1], bar_index + lineExtra, high[1], color = lineColor, width = lineWidth, style = lineStyleFn(lineStyleStr))
+
+// =====================================================================
+// Draw equilibrium box on the C3 bar (one bar after C2)
+// =====================================================================
+if showEq and prevRevBull and inDisplay
+    box.new(bar_index, open, bar_index + eqExtra, bullEq, bgcolor = eqBullColor, border_color = eqBullBorder, border_width = eqBorderW)
+
+if showEq and prevRevBear and inDisplay
+    box.new(bar_index, bearEq, bar_index + eqExtra, open, bgcolor = eqBearColor, border_color = eqBearBorder, border_width = eqBorderW)

@@ -1,71 +1,64 @@
 # Sweep Closure Sequencer [SCS] — Guidelines
 
+Visual style modeled after `fractal_candle_closure.pine` from the
+`feat/smt-quarter-sequences` branch. Same drawing idiom, narrower scope:
+just the closure line and the equilibrium box.
+
 ## What it draws
 
-Only two primitives, no labels or text:
+1. **Closure line** — a short red horizontal line at the swept extreme of C1, drawn on the C2 bar (the bar that swept C1).
+2. **Equilibrium box** — a translucent blue rectangle, drawn on the C3 bar (one bar after C2), spanning from `open(C3)` to the midpoint of `[open(C3), swept extreme of C1]`.
 
-1. **Closure line** — a thin horizontal line at the swept extreme, spanning from the reference candle to the candle that swept it. Drawn on every sweep (both Reversal and Continuation).
-2. **Equilibrium box** — a translucent rectangle drawn after a Reversal closure. Spans from the open of the next candle to the midpoint of `open(next) ↔ swept extreme`, extending forward by `Eq box extension` bars.
+No text. No labels. Lines and boxes only.
 
-## How to install
+## Logic
 
-1. Open TradingView → Pine Editor.
-2. Paste the contents of `SweepClosureSequencer.pine`.
-3. Click **Save** (Ctrl/Cmd + S) and give it any local name.
-4. Click **Add to chart**.
+Immediate C1/C2 detection — every bar is potentially a C2 of the bar before it.
+
+- **Bullish reversal**: `low < low[1] and close > low[1]` → C2 wicked C1's low and closed back above. Draw closure line at `low[1]`. On the next bar, draw the equilibrium box from `open` down to the midpoint.
+- **Bearish reversal**: `high > high[1] and close < high[1]` → C2 wicked C1's high and closed back below. Mirror image.
+
+This matches the rolling-reference rule at depth 1: each bar is treated as a fresh C1 candidate for the next bar's evaluation. If the current bar isn't a reversal, the next bar gets evaluated against this one.
+
+## Install
+
+1. TradingView → Pine Editor.
+2. Paste `SweepClosureSequencer.pine`.
+3. Save → Add to chart.
 
 ## Settings
 
-| Input | Default | Purpose |
-|---|---|---|
-| Show closure line | true | Draw the horizontal line at swept extremes |
-| Show equilibrium box | true | Draw the post-reversal eq box |
-| Eq box extension (bars) | 10 | How many bars right the box stretches |
-| Closure line | black | Color of the closure line |
-| Closure line width | 2 | 1-4 |
-| Eq box (bull rev) | translucent green | Box color when bullish reversal fires |
-| Eq box (bear rev) | translucent red | Box color when bearish reversal fires |
-| Eq box border | translucent gray | Border of the eq box |
+| Group | Input | Default | Purpose |
+|---|---|---|---|
+| Display | Show Last N Days | 3 | Limit drawings to the most recent N days |
+| Closure Line | Show Closure Line | true | Toggle the line |
+| Closure Line | Line Color | red `#ff1744` | Line color |
+| Closure Line | Line Width | 1 | 1–5 |
+| Closure Line | Line Style | Solid | Solid / Dashed / Dotted |
+| Closure Line | Line Extra Bars | 1 | How far past C2 the line extends |
+| Equilibrium Box | Show Equilibrium Box | true | Toggle the box |
+| Equilibrium Box | Bull / Bear Box Color | translucent blue `#2196f3` | Fill color |
+| Equilibrium Box | Bull / Bear Border | semi-translucent blue | Border color |
+| Equilibrium Box | Border Width | 1 | 0–3 |
+| Equilibrium Box | Box Extra Bars | 2 | Right extension of the box |
 
-## How the logic runs
+## Verification
 
-The script keeps two independent rolling references:
+Apply on a liquid pair (EURUSD, GBPUSD, NQ, ES) on 1H or 4H. You should see:
 
-- **Bearish ref** — tracks the active low. If a future candle's wick goes below this low (sweep) and:
-  - **closes back above** the level → **bullish reversal** → draws closure line + equilibrium box on the next bar.
-  - **closes below** the level → **bullish-side continuation** → draws closure line only, rolls the reference forward.
-- **Bullish ref** — mirror image, tracking highs for bearish reversals/continuations.
+- Red horizontal lines bridging two adjacent candles whenever the right candle wicked the left candle's high or low and closed back inside.
+- Blue translucent rectangles appearing on the bar AFTER each red line, sized to the upper or lower half of `open(C3)` ↔ swept extreme.
 
-Sweep is a strict comparison (`low < refLow` or `high > refHigh`). Equal levels are ignored.
-
-## Why nothing showed before
-
-Three causes were addressed in this revision:
-
-1. **`var int x = na` initialization** could leave the references unevaluated in some bar configurations. The fix uses sentinel values (`-1` for ints, `0.0` for floats) and lazy-initialises on the first bar where the script runs.
-2. **`barstate.isfirst` is only true on the absolute first bar of the dataset** and could be skipped if the series wasn't fully ready. Replaced with a sentinel-based check that always primes the state.
-3. **Default box transparency was 80** — boxes were technically drawn but barely visible against the chart background. Lowered to 70 and added an opaque-ish gray border so the box edges read clearly.
-
-## How to verify it's working
-
-1. Apply the indicator to any liquid instrument with active price action (e.g. EURUSD 4H).
-2. Look for short black horizontal lines bridging two adjacent candles at one of their wick levels — those are closure lines.
-3. After a wick is taken and the candle closes back inside the prior range, you should see a green/red translucent rectangle appear on the next bar.
-
-If you still see nothing:
-
-- Open the indicator's status icon on the chart and check for compile errors.
-- Confirm the chart has at least 50 bars of history loaded.
-- Bump `Closure line width` to 3 or 4 and reduce `Eq box (bull/bear rev)` transparency for a stress-test.
+If you want denser signals: lower the timeframe (15m, 5m). If you want fewer: increase TF or shorten `Show Last N Days`.
 
 ## Tuning tips
 
-- **Cleaner chart on trending pairs**: turn off `Show closure line` — closure lines are drawn on every sweep, so strong trends produce many of them. Equilibrium boxes alone show only the resolved reversal points.
-- **Wider eq boxes for swing trading**: bump `Eq box extension` to 30-50.
-- **Aligned LTF rendering**: this indicator runs on whatever TF the chart is on. To draw HTF eq boxes on a lower timeframe, wrap the calculation in `request.security(syminfo.tickerid, "HTF", ...)` with the desired HTF; that's a future enhancement, not required for the current behaviour.
+- **Cleaner chart on trending pairs**: increase `Line Width` to 2, set `Line Extra Bars` to 0 so the lines don't overlap subsequent candles.
+- **Wider eq boxes**: bump `Box Extra Bars` to 5–10.
+- **Different colors per direction**: split bull and bear box colors (already exposed as separate inputs).
 
 ## Limitations / known behaviour
 
-- The reference rolls forward on **every** sweep (reversal or continuation). A long monotonic trend will produce many closure lines on the trend side. This is by design — each sweep is a discrete event.
-- The equilibrium box uses the open of the bar **after** the reversal; on the very last (live) bar, the box for a reversal that just fired will only appear once the next bar opens.
-- `max_lines_count` and `max_boxes_count` are capped at 500 each; older drawings are auto-removed by the engine if exceeded.
+- Pure 2-bar comparison. No deeper rolling reference, no ATR filters, no trend gating.
+- The equilibrium box appears one bar after the reversal because it needs `open(C3)`. On the live (developing) bar that just produced a reversal, the box won't render until the next bar opens.
+- `max_lines_count` and `max_boxes_count` are 500 each; the engine auto-prunes oldest drawings beyond that.
