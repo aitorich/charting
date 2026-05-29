@@ -1,0 +1,180 @@
+// [Astrophile] - Intra-Candle CISD Tracker
+// =========================================
+// Tracks Change in State of Delivery (CISD) on the aligned LTF chart
+// of every HTF candle, in both directions.
+//
+// CISD logic (per HTF candle):
+//   1. Inside the HTF candle's LTF window, find the LTF bar that prints
+//      the lowest low (bull) or highest high (bear).
+//   2. Walk backward from that extreme to the consecutive opposite-direction
+//      run terminating at/before it (cover ALL consecutive candles).
+//   3. Anchor = open of the OLDEST candle in the run.
+//   4. CISD fires the first LTF bar whose close crosses the anchor
+//      (close > anchor for bull, close < anchor for bear).
+//
+// Each HTF window can fire bull CISD and bear CISD independently, at most
+// once per direction. The window resets at the next HTF candle boundary.
+//
+// Aligned timeframe map:
+//   1D  -> 1H
+//   4H  -> 15m
+//   1H  -> 5m
+//   30m -> 3m
+//   15m -> 1m
+//
+// Visuals (lines only — no labels, no text):
+//   - Anchor line at the run's oldest open, from oldest run bar to the
+//     trigger bar.
+//   - Optional bracket above/below the consecutive run.
+//
+// © Astrophile
+
+//@version=6
+indicator("[Astrophile] - Intra-Candle CISD Tracker", "ICT-CISD", overlay = true, max_lines_count = 500)
+
+// =====================================================================
+// Inputs
+// =====================================================================
+g_tf   = "Timeframe"
+g_bias = "Direction"
+g_anch = "Anchor"
+g_brk  = "Run Bracket"
+g_disp = "Display"
+
+htfStr  = input.timeframe("240", "HTF (CISD window)", group = g_tf, tooltip = "Aligned LTF: 1D→1H, 240→15, 60→5, 30→3, 15→1")
+biasStr = input.string("Auto", "Track", options = ["Auto", "Bullish only", "Bearish only"], group = g_bias)
+
+cisdBullColor = input.color(color.new(#16a34a, 0), "Bull anchor color", group = g_anch)
+cisdBearColor = input.color(color.new(#dc2626, 0), "Bear anchor color", group = g_anch)
+cisdWidth     = input.int(2, "Anchor width", minval = 1, maxval = 4,    group = g_anch)
+cisdStyleStr  = input.string("Dashed", "Anchor style", options = ["Solid","Dashed","Dotted"], group = g_anch)
+
+showBracket    = input.bool(true, "Show consecutive run bracket",        group = g_brk)
+bracketBull    = input.color(color.new(#16a34a, 30), "Bull bracket color", group = g_brk)
+bracketBear    = input.color(color.new(#dc2626, 30), "Bear bracket color", group = g_brk)
+bracketWidth   = input.int(2, "Bracket width", minval = 1, maxval = 3,   group = g_brk)
+
+displayDays = input.int(7, "Last N days", minval = 1, maxval = 60, group = g_disp)
+
+// =====================================================================
+// Helpers
+// =====================================================================
+lineStyleFn(string s) =>
+    s == "Dashed" ? line.style_dashed : s == "Dotted" ? line.style_dotted : line.style_solid
+
+// Aligned LTF map (single LTF per HTF for clean rendering)
+alignedLtf = htfStr == "15" ? "1" : htfStr == "30" ? "3" : htfStr == "60" ? "5" : htfStr == "240" ? "15" : htfStr == "1D" ? "60" : ""
+
+chartTf    = timeframe.period
+isLtfChart = (alignedLtf != "") and (chartTf == alignedLtf)
+
+chartSec    = timeframe.in_seconds()
+displayBars = math.round(displayDays * 86400 / math.max(60, chartSec))
+inDisplay   = bar_index >= (last_bar_index - displayBars)
+
+allowBull = biasStr == "Auto" or biasStr == "Bullish only"
+allowBear = biasStr == "Auto" or biasStr == "Bearish only"
+
+// =====================================================================
+// HTF window detection
+// =====================================================================
+htfStartT   = time(htfStr)
+isNewHtfBar = ta.change(htfStartT) != 0
+
+var int  winStart = na
+var bool bullDone = false
+var bool bearDone = false
+
+if isLtfChart and isNewHtfBar
+    winStart  := bar_index
+    bullDone  := false
+    bearDone  := false
+
+// =====================================================================
+// CISD search
+//   Strictly inside [winStart, bar_index].
+// =====================================================================
+findCisd(int dir, int startBar) =>
+    int   n      = bar_index - startBar
+    int   extBar = bar_index
+    float extVal = dir == 1 ? low : high
+    if n > 0
+        for i = 1 to n
+            float v = dir == 1 ? low[i] : high[i]
+            bool better = dir == 1 ? (v < extVal) : (v > extVal)
+            if better
+                extVal := v
+                extBar := bar_index - i
+
+    int   newRun = na
+    int   oldRun = na
+    float anch   = na
+    int   iter   = extBar
+    int   guard  = 0
+    while iter >= startBar and guard < 500
+        int off = bar_index - iter
+        if off >= 0
+            bool isOpp = dir == 1 ? (close[off] < open[off]) : (close[off] > open[off])
+            if isOpp
+                newRun := iter
+                break
+        iter  -= 1
+        guard += 1
+
+    if not na(newRun)
+        oldRun := newRun
+        int j  = newRun - 1
+        int g2 = 0
+        while j >= startBar and g2 < 500
+            int off = bar_index - j
+            bool isOpp = false
+            if off >= 0
+                isOpp := dir == 1 ? (close[off] < open[off]) : (close[off] > open[off])
+            if isOpp
+                oldRun := j
+                j      -= 1
+                g2     += 1
+            else
+                break
+        anch := open[bar_index - oldRun]
+
+    [anch, oldRun, newRun]
+
+// =====================================================================
+// Drawing
+// =====================================================================
+drawCisd(int dir, float anchor, int oldBar, int newBar) =>
+    color  cAnch    = dir == 1 ? cisdBullColor : cisdBearColor
+    color  cBracket = dir == 1 ? bracketBull   : bracketBear
+
+    line.new(oldBar, anchor, bar_index, anchor, color = cAnch, width = cisdWidth, style = lineStyleFn(cisdStyleStr), xloc = xloc.bar_index)
+
+    if showBracket
+        float span     = math.abs(high[bar_index - oldBar] - low[bar_index - oldBar])
+        float yBracket = dir == 1 ? open[bar_index - oldBar] + span * 0.4 : open[bar_index - oldBar] - span * 0.4
+        float yTick    = dir == 1 ? yBracket - span * 0.15 : yBracket + span * 0.15
+        line.new(oldBar, yBracket, newBar, yBracket, color = cBracket, width = bracketWidth, xloc = xloc.bar_index)
+        line.new(oldBar, yBracket, oldBar, yTick,    color = cBracket, width = bracketWidth, xloc = xloc.bar_index)
+        line.new(newBar, yBracket, newBar, yTick,    color = cBracket, width = bracketWidth, xloc = xloc.bar_index)
+
+// =====================================================================
+// Main loop — every confirmed LTF bar inside the HTF window
+// =====================================================================
+if isLtfChart and inDisplay and barstate.isconfirmed and not na(winStart)
+    if allowBull and not bullDone
+        [anch, oldR, newR] = findCisd(1, winStart)
+        if not na(anch) and not na(oldR) and not na(newR) and close > anch
+            drawCisd(1, anch, oldR, newR)
+            bullDone := true
+
+    if allowBear and not bearDone
+        [anch, oldR, newR] = findCisd(-1, winStart)
+        if not na(anch) and not na(oldR) and not na(newR) and close < anch
+            drawCisd(-1, anch, oldR, newR)
+            bearDone := true
+
+// =====================================================================
+// Alerts
+// =====================================================================
+alertcondition(false, "Bull CISD", "Bullish CISD on {{ticker}}")
+alertcondition(false, "Bear CISD", "Bearish CISD on {{ticker}}")
