@@ -11,7 +11,6 @@ g_lc2  = "Closure Line - C2 (depth 1)"
 g_lc3  = "Closure Line - C3 (depth 2)"
 g_box  = "Equilibrium Box (LTF only)"
 g_open = "HTF Opening Line (LTF only)"
-g_kl   = "Key Levels in Equilibrium (LTF only)"
 g_disp = "Display"
 
 htfStr  = input.timeframe("240", "HTF (reversal source)", group = g_tf, tooltip = "Aligned LTF: 15-1, 30-3, 60-5, 240-15, 1D-60, 1W-240")
@@ -49,23 +48,6 @@ openWidth     = input.int(1, "Width", minval = 1, maxval = 5,                   
 openStyleStr  = input.string("Dotted", "Style", options = ["Solid","Dashed","Dotted"],    group = g_open)
 openExtendStr = input.string("Both", "Extend", options = ["Both","Up","Down","None"],     group = g_open)
 openHistory   = input.bool(true, "Keep historical opens",                                 group = g_open)
-
-// Key levels (canonical detection from [Astrophile] - Key Levels)
-showSwingH      = input.bool(true,  "Show Swing High",                                    group = g_kl)
-showSwingL      = input.bool(true,  "Show Swing Low",                                     group = g_kl)
-showBullFVG     = input.bool(true,  "Show Bullish FVG",                                   group = g_kl)
-showBearFVG     = input.bool(true,  "Show Bearish FVG",                                   group = g_kl)
-swingStrength   = input.int(2, "Swing Strength", minval = 1, maxval = 10,                 group = g_kl)
-hideMitigated   = input.bool(true,  "Hide Mitigated Levels",                              group = g_kl)
-swingHColor     = input.color(color.new(#ff1744, 0),  "Swing High Color",                 group = g_kl)
-swingLColor     = input.color(color.new(#00e676, 0),  "Swing Low Color",                  group = g_kl)
-swingWidth      = input.int(1, "Swing Line Width", minval = 1, maxval = 3,                group = g_kl)
-swingStyleStr   = input.string("Solid", "Swing Style", options = ["Solid","Dashed","Dotted"], group = g_kl)
-bullFVGColor    = input.color(color.new(#00e676, 80), "Bull FVG Fill",                    group = g_kl)
-bullFVGBorder   = input.color(color.new(#00e676, 50), "Bull FVG Border",                  group = g_kl)
-bearFVGColor    = input.color(color.new(#ff1744, 80), "Bear FVG Fill",                    group = g_kl)
-bearFVGBorder   = input.color(color.new(#ff1744, 50), "Bear FVG Border",                  group = g_kl)
-fvgBorderWidth  = input.int(1, "FVG Border Width", minval = 0, maxval = 3,                group = g_kl)
 
 // Display
 displayDays = input.int(7, "Last N days", minval = 1, maxval = 60, group = g_disp)
@@ -148,151 +130,19 @@ if showLine2 and canRender2 and inDisplay
         line.new(bar_index - barsPerHtf * 3, htfH3, bar_index + barsPerHtf * line2Extra, htfH3, color = line2Color, width = line2Width, style = lineStyleFn(line2StyleStr), xloc = xloc.bar_index)
 
 // =====================================================================
-// KEY LEVELS (canonical detection from [Astrophile] - Key Levels)
-// Track on LTF chart bars; mitigation via close-through rule.
-// =====================================================================
-var float[] swingHs       = array.new_float(0)
-var int[]   swingHBars    = array.new_int(0)
-var bool[]  swingHMit     = array.new_bool(0)
-
-var float[] swingLs       = array.new_float(0)
-var int[]   swingLBars    = array.new_int(0)
-var bool[]  swingLMit     = array.new_bool(0)
-
-var float[] bullFVGTops   = array.new_float(0)
-var float[] bullFVGBots   = array.new_float(0)
-var int[]   bullFVGBars   = array.new_int(0)
-var bool[]  bullFVGMit    = array.new_bool(0)
-
-var float[] bearFVGTops   = array.new_float(0)
-var float[] bearFVGBots   = array.new_float(0)
-var int[]   bearFVGBars   = array.new_int(0)
-var bool[]  bearFVGMit    = array.new_bool(0)
-
-if isLtfChart
-    // ── swing detection ──
-    swH = ta.pivothigh(high, swingStrength, swingStrength)
-    swL = ta.pivotlow(low,  swingStrength, swingStrength)
-
-    if not na(swH)
-        array.push(swingHs, swH)
-        array.push(swingHBars, bar_index - swingStrength)
-        array.push(swingHMit, false)
-        if array.size(swingHs) > 50
-            array.shift(swingHs)
-            array.shift(swingHBars)
-            array.shift(swingHMit)
-
-    if not na(swL)
-        array.push(swingLs, swL)
-        array.push(swingLBars, bar_index - swingStrength)
-        array.push(swingLMit, false)
-        if array.size(swingLs) > 50
-            array.shift(swingLs)
-            array.shift(swingLBars)
-            array.shift(swingLMit)
-
-    // ── FVG detection (3-candle) ──
-    bullFVG = low > high[2]
-    bearFVG = high < low[2]
-
-    if bullFVG
-        array.push(bullFVGTops, low)
-        array.push(bullFVGBots, high[2])
-        array.push(bullFVGBars, bar_index - 1)
-        array.push(bullFVGMit,  false)
-        if array.size(bullFVGTops) > 50
-            array.shift(bullFVGTops)
-            array.shift(bullFVGBots)
-            array.shift(bullFVGBars)
-            array.shift(bullFVGMit)
-
-    if bearFVG
-        array.push(bearFVGTops, low[2])
-        array.push(bearFVGBots, high)
-        array.push(bearFVGBars, bar_index - 1)
-        array.push(bearFVGMit,  false)
-        if array.size(bearFVGTops) > 50
-            array.shift(bearFVGTops)
-            array.shift(bearFVGBots)
-            array.shift(bearFVGBars)
-            array.shift(bearFVGMit)
-
-    // ── mitigation (close-through) ──
-    if hideMitigated
-        if array.size(swingHs) > 0
-            for i = 0 to array.size(swingHs) - 1
-                if not array.get(swingHMit, i) and close > array.get(swingHs, i)
-                    array.set(swingHMit, i, true)
-        if array.size(swingLs) > 0
-            for i = 0 to array.size(swingLs) - 1
-                if not array.get(swingLMit, i) and close < array.get(swingLs, i)
-                    array.set(swingLMit, i, true)
-        if array.size(bullFVGTops) > 0
-            for i = 0 to array.size(bullFVGTops) - 1
-                if not array.get(bullFVGMit, i) and close < array.get(bullFVGBots, i)
-                    array.set(bullFVGMit, i, true)
-        if array.size(bearFVGTops) > 0
-            for i = 0 to array.size(bearFVGTops) - 1
-                if not array.get(bearFVGMit, i) and close > array.get(bearFVGTops, i)
-                    array.set(bearFVGMit, i, true)
-
-// =====================================================================
-// Equilibrium box + key levels overlapping eq area  (LTF only)
+// Equilibrium box  (LTF only)
 // =====================================================================
 canBox = isLtfChart and showBox
 
 if canBox and inDisplay and not na(currentHtfOpen) and (bullFire or bearFire)
-    eqMid       = bullFire ? (currentHtfOpen + htfL1) / 2.0 : (currentHtfOpen + htfH1) / 2.0
-    boxLeft     = bar_index
-    boxRight    = bar_index + barsPerHtf * boxExtraHtf
-    boxTopPrice = bullFire ? currentHtfOpen : eqMid
-    boxBotPrice = bullFire ? eqMid : currentHtfOpen
+    eqMid    = bullFire ? (currentHtfOpen + htfL1) / 2.0 : (currentHtfOpen + htfH1) / 2.0
+    boxLeft  = bar_index
+    boxRight = bar_index + barsPerHtf * boxExtraHtf
 
     if bullFire
         box.new(boxLeft, currentHtfOpen, boxRight, eqMid, bgcolor = boxBullColor, border_color = boxBullBorder, border_width = boxBorderW, xloc = xloc.bar_index)
     if bearFire
         box.new(boxLeft, eqMid, boxRight, currentHtfOpen, bgcolor = boxBearColor, border_color = boxBearBorder, border_width = boxBorderW, xloc = xloc.bar_index)
-
-    // swing highs whose price sits in the eq area
-    if showSwingH and array.size(swingHs) > 0
-        for i = 0 to array.size(swingHs) - 1
-            mit = hideMitigated and array.get(swingHMit, i)
-            p   = array.get(swingHs, i)
-            b   = array.get(swingHBars, i)
-            if not mit and p >= boxBotPrice and p <= boxTopPrice
-                line.new(b, p, boxRight, p, color = swingHColor, width = swingWidth, style = lineStyleFn(swingStyleStr), xloc = xloc.bar_index)
-
-    // swing lows
-    if showSwingL and array.size(swingLs) > 0
-        for i = 0 to array.size(swingLs) - 1
-            mit = hideMitigated and array.get(swingLMit, i)
-            p   = array.get(swingLs, i)
-            b   = array.get(swingLBars, i)
-            if not mit and p >= boxBotPrice and p <= boxTopPrice
-                line.new(b, p, boxRight, p, color = swingLColor, width = swingWidth, style = lineStyleFn(swingStyleStr), xloc = xloc.bar_index)
-
-    // bullish FVGs that overlap eq area
-    if showBullFVG and array.size(bullFVGTops) > 0
-        for i = 0 to array.size(bullFVGTops) - 1
-            mit = hideMitigated and array.get(bullFVGMit, i)
-            t   = array.get(bullFVGTops, i)
-            bt  = array.get(bullFVGBots, i)
-            xb  = array.get(bullFVGBars, i)
-            overlap = not (t < boxBotPrice or bt > boxTopPrice)
-            if not mit and overlap
-                box.new(xb, t, boxRight, bt, bgcolor = bullFVGColor, border_color = bullFVGBorder, border_width = fvgBorderWidth, xloc = xloc.bar_index)
-
-    // bearish FVGs
-    if showBearFVG and array.size(bearFVGTops) > 0
-        for i = 0 to array.size(bearFVGTops) - 1
-            mit = hideMitigated and array.get(bearFVGMit, i)
-            t   = array.get(bearFVGTops, i)
-            bt  = array.get(bearFVGBots, i)
-            xb  = array.get(bearFVGBars, i)
-            overlap = not (t < boxBotPrice or bt > boxTopPrice)
-            if not mit and overlap
-                box.new(xb, t, boxRight, bt, bgcolor = bearFVGColor, border_color = bearFVGBorder, border_width = fvgBorderWidth, xloc = xloc.bar_index)
 
 // =====================================================================
 // HTF opening line (LTF only, VERTICAL line)
