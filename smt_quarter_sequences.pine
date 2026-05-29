@@ -1,0 +1,371 @@
+// This Pine Script™ source code is subject to the terms of the Mozilla Public License 2.0
+// © SMT Quarter Sequences (4HR) - NQ/YM
+// Wick-to-wick SMT lines across quarters within 2AM/6AM/10AM blocks
+// + Cross-block SMT: Q1 vs Q4 of previous block only
+// + Fractal Candle Closure (multi-timeframe)
+// + PSP Candle + Daily Open Line
+// + Sweep Closure Sequencer (C2 / C3 closure + Equilibrium box)
+
+//@version=6
+indicator("SMT Quarter Sequences (4HR)", overlay=true, max_lines_count=500, max_labels_count=200, max_boxes_count=500)
+
+// ─── SYMBOLS ──────────────────────────────────────────────────────────────────
+string symA = input.symbol("NQ1!", "Symbol A", group="Symbols")
+string symB = input.symbol("YM1!", "Symbol B", group="Symbols")
+
+// ─── DISPLAY ──────────────────────────────────────────────────────────────────
+int displayDays = input.int(1, "Show Last N Days", minval=1, maxval=10, group="Display")
+
+// ─── SMT LINE STYLE ───────────────────────────────────────────────────────────
+color bullLineColor = input.color(color.new(#00e676, 0), "Bull Line Color", group="SMT Line")
+color bearLineColor = input.color(color.new(#ff1744, 0), "Bear Line Color", group="SMT Line")
+int smtLineWidth    = input.int(2, "Line Width", minval=1, maxval=5, group="SMT Line")
+string smtLineStyle = input.string("Solid", "Line Style", options=["Solid", "Dashed", "Dotted"], group="SMT Line")
+
+// ─── SMT LABEL STYLE ─────────────────────────────────────────────────────────
+bool showSmtLabel    = input.bool(true, "Show Label", group="SMT Label")
+color bullLabelColor = input.color(color.new(#00e676, 0), "Bull Label Color", group="SMT Label")
+color bearLabelColor = input.color(color.new(#ff1744, 0), "Bear Label Color", group="SMT Label")
+string smtLabelSz   = input.string("Small", "Label Size", options=["Tiny", "Small", "Normal", "Large"], group="SMT Label")
+
+// ─── SESSION TOGGLES ──────────────────────────────────────────────────────────
+bool show2AM  = input.bool(true, "2AM Block (2-6 ET)", group="Sessions")
+bool show6AM  = input.bool(true, "6AM Block (6-10 ET)", group="Sessions")
+bool show10AM = input.bool(true, "10AM Block (10-14 ET)", group="Sessions")
+
+// ─── SEPARATOR STYLE ──────────────────────────────────────────────────────────
+bool showSep    = input.bool(true, "Show 4HR Separators", group="Separator")
+color sepColor  = input.color(color.new(#ffcc00, 40), "Separator Color", group="Separator")
+string sepStyle = input.string("Dotted", "Separator Style", options=["Solid", "Dashed", "Dotted"], group="Separator")
+int sepWidth    = input.int(1, "Separator Width", minval=1, maxval=3, group="Separator")
+
+// ─── DAILY OPEN LINE ──────────────────────────────────────────────────────────
+bool showDailyOpen    = input.bool(true, "Show Daily Open (6PM ET)", group="Daily Open")
+color dailyOpenColor  = input.color(color.new(#ff9800, 0), "Daily Open Color", group="Daily Open")
+string dailyOpenStyle = input.string("Solid", "Daily Open Style", options=["Solid", "Dashed", "Dotted"], group="Daily Open")
+int dailyOpenWidth    = input.int(2, "Daily Open Width", minval=1, maxval=5, group="Daily Open")
+
+// ─── TABLE ────────────────────────────────────────────────────────────────────
+bool showTable = input.bool(true, "Show Table", group="Table")
+
+// ─── PSP CANDLE ────────────────────────────────────────────────────────────────
+bool showPSP      = input.bool(true, "Show PSP", group="PSP Candle")
+color pspColor    = input.color(color.new(#ff1744, 80), "PSP BG Color (20% opacity)", group="PSP Candle")
+bool pspBarColor  = input.bool(false, "Color PSP candle body", group="PSP Candle")
+color pspCandleClr = input.color(color.new(#e040fb, 0), "PSP Candle Color", group="PSP Candle")
+
+// ─── FRACTAL CANDLE CLOSURE ────────────────────────────────────────────────────
+bool showFCC       = input.bool(true, "Show Fractal Candle Closure", group="Fractal Candle")
+string fccTF       = input.string("60", "Sweep Timeframe", options=["15", "30", "60"], group="Fractal Candle")
+color fccBullColor = input.color(color.new(#ff1744, 0), "FCC Bullish Color", group="Fractal Candle")
+color fccBearColor = input.color(color.new(#ff1744, 0), "FCC Bearish Color", group="Fractal Candle")
+int fccLineWidth   = input.int(1, "FCC Line Width", minval=1, maxval=5, group="Fractal Candle")
+string fccLineStyleStr = input.string("Solid", "FCC Line Style", options=["Solid", "Dashed", "Dotted"], group="Fractal Candle")
+int fccExtraBars   = input.int(1, "Extra Bars After C2", minval=0, maxval=5, group="Fractal Candle")
+
+// ─── SWEEP CLOSURE SEQUENCER ─────────────────────────────────────────────────
+// New module: detects C2 (depth-1) and C3 (depth-2) sweep closures on a
+// configurable HTF and draws a fractal equilibrium box on the aligned LTF.
+// HTF opening line is intentionally omitted (Daily Open Line above already
+// handles HTF context — no duplication).
+g_scs = "Sweep Closure Sequencer"
+string scsHtf            = input.timeframe("240", "SCS HTF", group=g_scs, tooltip="Aligned LTF: 15→1, 30→3, 60→5, 240→15, 1D→60, 1W→240")
+string scsBias           = input.string("Auto", "Bias", options=["Auto","Bullish only","Bearish only"], group=g_scs)
+bool   scsShowC2Rev      = input.bool(true,  "Show C2 reversal line",       group=g_scs)
+color  scsC2RevColor     = input.color(color.new(#ff1744, 0), "C2 reversal color",      group=g_scs)
+bool   scsShowC2Cont     = input.bool(true,  "Show C2 continuation line",   group=g_scs)
+color  scsC2ContColor    = input.color(color.new(#888888, 0), "C2 continuation color",  group=g_scs)
+bool   scsShowC3Rev      = input.bool(true,  "Show C3 reversal line",       group=g_scs)
+color  scsC3RevColor     = input.color(color.new(#ff9100, 0), "C3 reversal color",      group=g_scs)
+int    scsLineWidth      = input.int(2, "SCS line width", minval=1, maxval=5, group=g_scs)
+string scsLineStyleStr   = input.string("Solid", "SCS line style", options=["Solid","Dashed","Dotted"], group=g_scs)
+int    scsLineExtra      = input.int(1, "SCS line extension (HTF bars)", minval=0, maxval=10, group=g_scs)
+bool   scsLineOnLtf      = input.bool(true, "Render closure lines on aligned LTF", group=g_scs)
+bool   scsShowBox        = input.bool(true, "Show equilibrium box (LTF only)", group=g_scs)
+color  scsBoxBullColor   = input.color(color.new(#2196f3, 80), "Eq box bull fill",   group=g_scs)
+color  scsBoxBearColor   = input.color(color.new(#2196f3, 80), "Eq box bear fill",   group=g_scs)
+color  scsBoxBullBorder  = input.color(color.new(#2196f3, 50), "Eq box bull border", group=g_scs)
+color  scsBoxBearBorder  = input.color(color.new(#2196f3, 50), "Eq box bear border", group=g_scs)
+int    scsBoxBorderW     = input.int(1, "Eq box border width", minval=0, maxval=3, group=g_scs)
+int    scsBoxExtraHtf    = input.int(1, "Eq box extension (HTF bars)", minval=1, maxval=10, group=g_scs)
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+lineStyle(string s) =>
+    s == "Dashed" ? line.style_dashed : s == "Dotted" ? line.style_dotted : line.style_solid
+
+labelSize(string s) =>
+    s == "Tiny" ? size.tiny : s == "Normal" ? size.normal : s == "Large" ? size.large : size.small
+
+// ─── DATA (optimized tuple requests) ──────────────────────────────────────────
+[aH, aL, aO, aC] = request.security(symA, "60", [high, low, open, close])
+[bH, bL, bO, bC] = request.security(symB, "60", [high, low, open, close])
+
+// FCC data from selected timeframe
+[fccH, fccL, fccC, fccPrevH, fccPrevL] = request.security(syminfo.tickerid, fccTF, [high, low, close, high[1], low[1]])
+
+// ─── TIME ─────────────────────────────────────────────────────────────────────
+int hr = hour(time, "America/New_York")
+int prevHr = hour(time[1], "America/New_York")
+int sinceOpen = (hr - 18 + 24) % 24
+bool newBlock = (sinceOpen % 4 == 0) and (hr != prevHr or session.isfirstbar)
+
+// Which block?
+bool is2AM  = hr >= 2 and hr < 6
+bool is6AM  = hr >= 6 and hr < 10
+bool is10AM = hr >= 10 and hr < 14
+bool blockOn = (is2AM and show2AM) or (is6AM and show6AM) or (is10AM and show10AM)
+
+// Daily open detection (6PM ET)
+bool isDailyOpen = (hr == 18 and prevHr != 18)
+
+// N days display filter
+int displayBars = displayDays * 24
+bool inDisplay = bar_index >= (last_bar_index - displayBars)
+
+// ─── SMT RESTRICTED TO 1HR ───────────────────────────────────────────────────
+bool is1H = timeframe.period == "60"
+
+// ─── QUARTER STATE ────────────────────────────────────────────────────────────
+var int q = 0
+var float q1aH = na, var float q1aL = na, var int q1b = na
+var float q2aH = na, var float q2aL = na, var int q2b = na
+var float q3aH = na, var float q3aL = na, var int q3b = na
+var float q1bH = na, var float q1bL = na
+var float q2bH = na, var float q2bL = na
+var float q3bH = na, var float q3bL = na
+
+// Previous block Q4 only (cross-block)
+var float pv4aH = na, var float pv4aL = na, var int pv4b = na
+var float pv4bH = na, var float pv4bL = na
+
+if is1H and newBlock and blockOn
+    pv4aH := aH[1], pv4aL := aL[1], pv4b := bar_index - 1
+    pv4bH := bH[1], pv4bL := bL[1]
+    q := 0
+    q1aH := na, q1aL := na, q1b := na
+    q2aH := na, q2aL := na, q2b := na
+    q3aH := na, q3aL := na, q3b := na
+    q1bH := na, q1bL := na
+    q2bH := na, q2bL := na
+    q3bH := na, q3bL := na
+
+if is1H and blockOn
+    if q == 0
+        q1aH := aH, q1aL := aL, q1b := bar_index
+        q1bH := bH, q1bL := bL
+    else if q == 1
+        q2aH := aH, q2aL := aL, q2b := bar_index
+        q2bH := bH, q2bL := bL
+    else if q == 2
+        q3aH := aH, q3aL := aL, q3b := bar_index
+        q3bH := bH, q3bL := bL
+    else if q == 3
+        q3bL := q3bL
+
+// ─── PRIOR HIGH/LOW (within same block) ──────────────────────────────────────
+float pHighA = na, float pLowA = na
+float pHighB = na, float pLowB = na
+int pHBar = na, int pLBar = na
+
+if q == 1 and not na(q1aH)
+    pHighA := q1aH, pLowA := q1aL
+    pHighB := q1bH, pLowB := q1bL
+    pHBar := q1b, pLBar := q1b
+else if q == 2 and not na(q1aH) and not na(q2aH)
+    pHighA := math.max(q1aH, q2aH)
+    pLowA  := math.min(q1aL, q2aL)
+    pHighB := math.max(q1bH, q2bH)
+    pLowB  := math.min(q1bL, q2bL)
+    pHBar := q1aH >= q2aH ? q1b : q2b
+    pLBar := q1aL <= q2aL ? q1b : q2b
+else if q == 3 and not na(q1aH) and not na(q2aH) and not na(q3aH)
+    pHighA := math.max(q1aH, math.max(q2aH, q3aH))
+    pLowA  := math.min(q1aL, math.min(q2aL, q3aL))
+    pHighB := math.max(q1bH, math.max(q2bH, q3bH))
+    pLowB  := math.min(q1bL, math.min(q2bL, q3bL))
+    pHBar := q1aH >= q2aH and q1aH >= q3aH ? q1b : q2aH >= q3aH ? q2b : q3b
+    pLBar := q1aL <= q2aL and q1aL <= q3aL ? q1b : q2aL <= q3aL ? q2b : q3b
+
+// ─── SMT DETECTION (within block) ────────────────────────────────────────────
+bool bear = false
+bool bull = false
+
+if is1H and blockOn and q >= 1 and not na(pHighA) and not na(pHighB)
+    if (aH > pHighA and not (bH > pHighB)) or (bH > pHighB and not (aH > pHighA))
+        bear := true
+
+if is1H and blockOn and q >= 1 and not na(pLowA) and not na(pLowB)
+    if (aL < pLowA and not (bL < pLowB)) or (bL < pLowB and not (aL < pLowA))
+        bull := true
+
+// ─── CROSS-BLOCK SMT (Q1 vs Q4 of previous block only) ───────────────────────
+bool crossBear = false
+bool crossBull = false
+
+if is1H and blockOn and q == 0 and not na(pv4aH) and not na(pv4bH)
+    if (aH > pv4aH and not (bH > pv4bH)) or (bH > pv4bH and not (aH > pv4aH))
+        crossBear := true
+    if (aL < pv4aL and not (bL < pv4bL)) or (bL < pv4bL and not (aL < pv4aL))
+        crossBull := true
+
+// ─── DRAW SMT (N days, 1HR only) ─────────────────────────────────────────────
+string qTag = q == 1 ? "Q2" : q == 2 ? "Q3" : q == 3 ? "Q4" : "Q1"
+
+if bear and not na(pHBar) and inDisplay
+    line.new(pHBar, pHighA, bar_index, aH, color=bearLineColor, width=smtLineWidth, style=lineStyle(smtLineStyle))
+    if showSmtLabel
+        label.new(bar_index, aH, qTag, style=label.style_none, textcolor=bearLabelColor, size=labelSize(smtLabelSz), xloc=xloc.bar_index)
+
+if bull and not na(pLBar) and inDisplay
+    line.new(pLBar, pLowA, bar_index, aL, color=bullLineColor, width=smtLineWidth, style=lineStyle(smtLineStyle))
+    if showSmtLabel
+        label.new(bar_index, aL, qTag, style=label.style_none, textcolor=bullLabelColor, size=labelSize(smtLabelSz), xloc=xloc.bar_index)
+
+if crossBear and not na(pv4b) and inDisplay
+    line.new(pv4b, pv4aH, bar_index, aH, color=bearLineColor, width=smtLineWidth, style=lineStyle(smtLineStyle))
+    if showSmtLabel
+        label.new(bar_index, aH, "Q1", style=label.style_none, textcolor=bearLabelColor, size=labelSize(smtLabelSz), xloc=xloc.bar_index)
+
+if crossBull and not na(pv4b) and inDisplay
+    line.new(pv4b, pv4aL, bar_index, aL, color=bullLineColor, width=smtLineWidth, style=lineStyle(smtLineStyle))
+    if showSmtLabel
+        label.new(bar_index, aL, "Q1", style=label.style_none, textcolor=bullLabelColor, size=labelSize(smtLabelSz), xloc=xloc.bar_index)
+
+// ─── PSP DETECTION ────────────────────────────────────────────────────────────
+bool aBull = aC > aO
+bool bBull = bC > bO
+bool isPSP = is1H and blockOn and (aBull != bBull) and inDisplay
+
+bgcolor(isPSP and showPSP ? pspColor : na, title="PSP BG")
+barcolor(isPSP and showPSP and pspBarColor ? pspCandleClr : na, title="PSP Bar")
+
+// ─── 4HR SEPARATOR (1HR only) ────────────────────────────────────────────────
+if is1H and newBlock and showSep and blockOn and inDisplay
+    line.new(bar_index, high, bar_index, low, extend=extend.both, color=sepColor, style=lineStyle(sepStyle), width=sepWidth)
+
+// ─── DAILY OPEN LINE (6PM ET) ────────────────────────────────────────────────
+if is1H and isDailyOpen and showDailyOpen and inDisplay
+    line.new(bar_index, high, bar_index, low, extend=extend.both, color=dailyOpenColor, style=lineStyle(dailyOpenStyle), width=dailyOpenWidth)
+
+// ─── INCREMENT ───────────────────────────────────────────────────────────────
+if is1H and blockOn and not newBlock
+    q := math.min(q + 1, 3)
+
+// ─── TABLE ───────────────────────────────────────────────────────────────────
+var int totalBull = 0, var int totalBear = 0
+
+if (bull or crossBull) and inDisplay
+    totalBull += 1
+if (bear or crossBear) and inDisplay
+    totalBear += 1
+
+var table t = table.new(position.top_right, 3, 2, bgcolor=color.new(#000000, 70), border_width=1, border_color=color.new(#333333, 0))
+
+if showTable and barstate.islast
+    table.cell(t, 0, 0, str.tostring(displayDays) + "D", text_color=#ffcc00, text_size=size.small)
+    table.cell(t, 1, 0, "Bull", text_color=bullLineColor, text_size=size.small)
+    table.cell(t, 2, 0, "Bear", text_color=bearLineColor, text_size=size.small)
+    table.cell(t, 0, 1, "SMT", text_color=#aaaaaa, text_size=size.small)
+    table.cell(t, 1, 1, str.tostring(totalBull), text_color=#ffffff, text_size=size.small)
+    table.cell(t, 2, 1, str.tostring(totalBear), text_color=#ffffff, text_size=size.small)
+
+// ─── FRACTAL CANDLE CLOSURE (works on any chart TF) ──────────────────────────
+// Uses selected timeframe data — no labels, just horizontal lines
+bool fccBullSweep = not na(fccPrevL) and (fccL < fccPrevL) and (fccC > fccPrevL)
+bool fccBearSweep = not na(fccPrevH) and (fccH > fccPrevH) and (fccC < fccPrevH)
+
+if showFCC and fccBullSweep and inDisplay
+    line.new(bar_index - 1, fccPrevL, bar_index + fccExtraBars, fccPrevL, color=fccBullColor, width=fccLineWidth, style=lineStyle(fccLineStyleStr))
+
+if showFCC and fccBearSweep and inDisplay
+    line.new(bar_index - 1, fccPrevH, bar_index + fccExtraBars, fccPrevH, color=fccBearColor, width=fccLineWidth, style=lineStyle(fccLineStyleStr))
+
+// ─── SWEEP CLOSURE SEQUENCER (C2 / C3 closure + Equilibrium box) ─────────────
+// Aligned LTF mapping
+string scsAlignedLtf = scsHtf == "15"  ? "1"   : scsHtf == "30"  ? "3"   : scsHtf == "60"  ? "5"   : scsHtf == "240" ? "15"  : scsHtf == "1D"  ? "60"  : scsHtf == "1W"  ? "240" : ""
+
+bool scsIsHtfChart = timeframe.period == scsHtf
+bool scsIsLtfChart = (scsAlignedLtf != "") and (timeframe.period == scsAlignedLtf)
+bool scsHasContext = scsIsHtfChart or scsIsLtfChart
+
+int scsHtfSec    = timeframe.in_seconds(scsHtf)
+int scsChartSec  = timeframe.in_seconds()
+int scsBarsPerHtf = scsChartSec > 0 ? math.max(1, math.round(scsHtfSec / scsChartSec)) : 1
+
+// SCS display window (independent of original 1H-assumption inDisplay)
+int scsDisplayBars = math.round(displayDays * 86400 / math.max(60, scsChartSec))
+bool scsInDisplay = bar_index >= (last_bar_index - scsDisplayBars)
+
+bool scsAllowBull = scsBias == "Auto" or scsBias == "Bullish only"
+bool scsAllowBear = scsBias == "Auto" or scsBias == "Bearish only"
+
+// HTF series:  [1] = C3 (just-closed), [2] = C2, [3] = C1
+[scsH1, scsL1, scsC1, scsH2, scsL2, scsC2, scsH3, scsL3] = request.security(syminfo.tickerid, scsHtf, [high[1], low[1], close[1], high[2], low[2], close[2], high[3], low[3]], lookahead=barmerge.lookahead_on)
+
+bool scsNewHtfBar = ta.change(time(scsHtf)) != 0
+
+// Capture open of the new (developing) HTF bar = open of "C4"
+var float scsHtfOpen = na
+if scsNewHtfBar
+    scsHtfOpen := open
+
+// Detection
+bool scsCanEval     = scsNewHtfBar and not na(scsL2) and not na(scsH2) and not na(scsC1)
+bool scsSwepBull1   = scsCanEval and scsL1 < scsL2
+bool scsSwepBear1   = scsCanEval and scsH1 > scsH2
+bool scsRevBull1    = scsSwepBull1 and scsAllowBull and scsC1 > scsL2
+bool scsContBull1   = scsSwepBull1 and scsAllowBull and scsC1 <= scsL2
+bool scsRevBear1    = scsSwepBear1 and scsAllowBear and scsC1 < scsH2
+bool scsContBear1   = scsSwepBear1 and scsAllowBear and scsC1 >= scsH2
+
+bool scsCanEval2    = scsCanEval and not na(scsL3) and not na(scsH3) and not na(scsC2)
+bool scsC2BullCont  = scsCanEval2 and scsL2 < scsL3 and scsC2 < scsL3
+bool scsC2BearCont  = scsCanEval2 and scsH2 > scsH3 and scsC2 > scsH3
+bool scsRevBull2    = scsCanEval2 and scsAllowBull and scsL1 < scsL3 and scsC1 > scsL3 and scsC2BullCont
+bool scsRevBear2    = scsCanEval2 and scsAllowBear and scsH1 > scsH3 and scsC1 < scsH3 and scsC2BearCont
+
+bool scsBullFire = scsRevBull1 or scsRevBull2
+bool scsBearFire = scsRevBear1 or scsRevBear2
+
+bool scsCanRenderLine = scsHasContext and (scsIsHtfChart or (scsIsLtfChart and scsLineOnLtf))
+
+// C2 reversal (line at swept extreme = C2 low / C2 high)
+if scsShowC2Rev and scsCanRenderLine and scsInDisplay
+    if scsRevBull1
+        line.new(bar_index - scsBarsPerHtf*2, scsL2, bar_index + scsBarsPerHtf*scsLineExtra, scsL2, color=scsC2RevColor, width=scsLineWidth, style=lineStyle(scsLineStyleStr), xloc=xloc.bar_index)
+    if scsRevBear1
+        line.new(bar_index - scsBarsPerHtf*2, scsH2, bar_index + scsBarsPerHtf*scsLineExtra, scsH2, color=scsC2RevColor, width=scsLineWidth, style=lineStyle(scsLineStyleStr), xloc=xloc.bar_index)
+
+// C2 continuation (line at swept extreme = C2 low / C2 high, different color)
+if scsShowC2Cont and scsCanRenderLine and scsInDisplay
+    if scsContBull1
+        line.new(bar_index - scsBarsPerHtf*2, scsL2, bar_index + scsBarsPerHtf*scsLineExtra, scsL2, color=scsC2ContColor, width=scsLineWidth, style=lineStyle(scsLineStyleStr), xloc=xloc.bar_index)
+    if scsContBear1
+        line.new(bar_index - scsBarsPerHtf*2, scsH2, bar_index + scsBarsPerHtf*scsLineExtra, scsH2, color=scsC2ContColor, width=scsLineWidth, style=lineStyle(scsLineStyleStr), xloc=xloc.bar_index)
+
+// C3 reversal (depth-2 — line at C1 low / C1 high)
+if scsShowC3Rev and scsCanRenderLine and scsInDisplay
+    if scsRevBull2
+        line.new(bar_index - scsBarsPerHtf*3, scsL3, bar_index + scsBarsPerHtf*scsLineExtra, scsL3, color=scsC3RevColor, width=scsLineWidth, style=lineStyle(scsLineStyleStr), xloc=xloc.bar_index)
+    if scsRevBear2
+        line.new(bar_index - scsBarsPerHtf*3, scsH3, bar_index + scsBarsPerHtf*scsLineExtra, scsH3, color=scsC3RevColor, width=scsLineWidth, style=lineStyle(scsLineStyleStr), xloc=xloc.bar_index)
+
+// Equilibrium box (LTF only) — anchored at open of new HTF bar (C4)
+if scsShowBox and scsIsLtfChart and scsInDisplay and not na(scsHtfOpen) and (scsBullFire or scsBearFire)
+    float scsEqMid = scsBullFire ? (scsHtfOpen + scsL1) / 2.0 : (scsHtfOpen + scsH1) / 2.0
+    int   scsBoxL  = bar_index
+    int   scsBoxR  = bar_index + scsBarsPerHtf * scsBoxExtraHtf
+    if scsBullFire
+        box.new(scsBoxL, scsHtfOpen, scsBoxR, scsEqMid, bgcolor=scsBoxBullColor, border_color=scsBoxBullBorder, border_width=scsBoxBorderW, xloc=xloc.bar_index)
+    if scsBearFire
+        box.new(scsBoxL, scsEqMid, scsBoxR, scsHtfOpen, bgcolor=scsBoxBearColor, border_color=scsBoxBearBorder, border_width=scsBoxBorderW, xloc=xloc.bar_index)
+
+// ─── ALERTS ──────────────────────────────────────────────────────────────────
+alertcondition(bull or crossBull, title="Bull SMT", message="Bull SMT {{ticker}}")
+alertcondition(bear or crossBear, title="Bear SMT", message="Bear SMT {{ticker}}")
+alertcondition(fccBullSweep, title="FCC Bull Sweep", message="Fractal Bull Sweep {{ticker}}")
+alertcondition(fccBearSweep, title="FCC Bear Sweep", message="Fractal Bear Sweep {{ticker}}")
+alertcondition(scsRevBull1, title="SCS C2 Bull Reversal", message="SCS C2 Bull Reversal {{ticker}}")
+alertcondition(scsRevBear1, title="SCS C2 Bear Reversal", message="SCS C2 Bear Reversal {{ticker}}")
+alertcondition(scsRevBull2, title="SCS C3 Bull Reversal", message="SCS C3 Bull Reversal {{ticker}}")
+alertcondition(scsRevBear2, title="SCS C3 Bear Reversal", message="SCS C3 Bear Reversal {{ticker}}")
