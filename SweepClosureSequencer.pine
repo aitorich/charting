@@ -304,7 +304,19 @@ if canCisd and inDisplay and (bullFire or bearFire)
         label.delete(cisdMark)
         cisdMark := na
 
-    [a, oldR, newR] = bullFire ? findBullCisd() : findBearCisd()
+    float a    = na
+    int   oldR = na
+    int   newR = na
+    if bullFire
+        [aa, oo, nn] = findBullCisd()
+        a    := aa
+        oldR := oo
+        newR := nn
+    else
+        [aa, oo, nn] = findBearCisd()
+        a    := aa
+        oldR := oo
+        newR := nn
 
     if not na(a) and not na(oldR) and not na(newR)
         cisdDir       := bullFire ? 1 : -1
