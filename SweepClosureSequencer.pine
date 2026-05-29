@@ -1,0 +1,108 @@
+// Sweep Closure Sequencer [SCS]
+// Detects 2-bar sweep closures: a candle that takes the prior reference's
+// extreme and either closes back beyond it (Reversal) or stays past it
+// (Continuation). On each sweep it draws a single closure line at the swept
+// extreme. On Reversal it also draws an equilibrium box from the next bar's
+// open to the midpoint of the leg (open(next) <-> swept extreme).
+//
+// No text, no labels. Lines and boxes only.
+
+//@version=6
+indicator("Sweep Closure Sequencer [SCS]", overlay = true, max_lines_count = 500, max_boxes_count = 500)
+
+// =====================================================================
+// Inputs
+// =====================================================================
+g_show  = "Display"
+g_color = "Colors"
+
+showShelf  = input.bool(true, "Show closure line",       group = g_show)
+showEq     = input.bool(true, "Show equilibrium box",    group = g_show)
+eqExtend   = input.int(10,    "Eq box extension (bars)", minval = 1, maxval = 200, group = g_show)
+
+shelfColor    = input.color(color.new(color.black, 0),  "Closure line",                group = g_color)
+shelfWidth    = input.int(2, "Closure line width", minval = 1, maxval = 4,             group = g_color)
+eqBullColor   = input.color(color.new(color.green, 80), "Eq box (bullish reversal)",   group = g_color)
+eqBearColor   = input.color(color.new(color.red,   80), "Eq box (bearish reversal)",   group = g_color)
+eqBorderColor = input.color(color.new(color.gray,  50), "Eq box border",               group = g_color)
+
+// =====================================================================
+// State
+// =====================================================================
+// Bearish reference (tracks a low; sweep + close-back-above => bullish reversal)
+var int   bearRefIdx = na
+var float bearRefLow = na
+
+// Bullish reference (tracks a high; sweep + close-back-below => bearish reversal)
+var int   bullRefIdx  = na
+var float bullRefHigh = na
+
+// Pending reversals: drawn on the next bar so we can use that bar's open
+var int   pendBullRevBar      = na
+var float pendBullRevSweptLow = na
+var int   pendBearRevBar       = na
+var float pendBearRevSweptHigh = na
+
+// =====================================================================
+// Initialise refs on the very first bar
+// =====================================================================
+if barstate.isfirst
+    bearRefIdx  := bar_index
+    bearRefLow  := low
+    bullRefIdx  := bar_index
+    bullRefHigh := high
+
+// =====================================================================
+// Per-bar evaluation (on close)
+// =====================================================================
+if barstate.isconfirmed and bar_index > 0
+
+    // ---- Bearish ref: low sweep -> bullish reversal candidate ----
+    if not na(bearRefIdx) and bar_index > bearRefIdx
+        if low < bearRefLow
+            if close >= bearRefLow
+                // Reversal
+                if showShelf
+                    line.new(bearRefIdx, bearRefLow, bar_index, bearRefLow, color = shelfColor, width = shelfWidth)
+                pendBullRevBar      := bar_index
+                pendBullRevSweptLow := low
+            else
+                // Continuation
+                if showShelf
+                    line.new(bearRefIdx, bearRefLow, bar_index, bearRefLow, color = shelfColor, width = shelfWidth)
+            // Roll ref forward in both branches
+            bearRefIdx := bar_index
+            bearRefLow := low
+
+    // ---- Bullish ref: high sweep -> bearish reversal candidate ----
+    if not na(bullRefIdx) and bar_index > bullRefIdx
+        if high > bullRefHigh
+            if close <= bullRefHigh
+                // Reversal
+                if showShelf
+                    line.new(bullRefIdx, bullRefHigh, bar_index, bullRefHigh, color = shelfColor, width = shelfWidth)
+                pendBearRevBar       := bar_index
+                pendBearRevSweptHigh := high
+            else
+                // Continuation
+                if showShelf
+                    line.new(bullRefIdx, bullRefHigh, bar_index, bullRefHigh, color = shelfColor, width = shelfWidth)
+            bullRefIdx  := bar_index
+            bullRefHigh := high
+
+// =====================================================================
+// Equilibrium boxes - drawn on the bar AFTER the reversal so we can
+// reference that bar's open price.
+// =====================================================================
+if showEq
+    if not na(pendBullRevBar) and bar_index == pendBullRevBar + 1
+        eqMid = (open + pendBullRevSweptLow) / 2.0
+        box.new(left = bar_index, top = math.max(open, eqMid), right = bar_index + eqExtend, bottom = math.min(open, eqMid), bgcolor = eqBullColor, border_color = eqBorderColor)
+        pendBullRevBar      := na
+        pendBullRevSweptLow := na
+
+    if not na(pendBearRevBar) and bar_index == pendBearRevBar + 1
+        eqMid = (open + pendBearRevSweptHigh) / 2.0
+        box.new(left = bar_index, top = math.max(open, eqMid), right = bar_index + eqExtend, bottom = math.min(open, eqMid), bgcolor = eqBearColor, border_color = eqBorderColor)
+        pendBearRevBar       := na
+        pendBearRevSweptHigh := na
