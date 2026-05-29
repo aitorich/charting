@@ -19,6 +19,7 @@
     --anchor:#2563eb;
     --trigger:#22c55e;
     --note:#444;
+    --runBracket:#7c3aed;
   }
   *{box-sizing:border-box}
   body{
@@ -30,7 +31,7 @@
   }
   header{max-width:1280px;margin:0 auto 18px}
   header h1{font-size:22px;margin:0 0 6px}
-  header p{margin:0;color:var(--muted);font-size:14px}
+  header p{margin:0;color:var(--muted);font-size:14px;line-height:1.55}
   .grid{
     max-width:1280px;
     margin:0 auto;
@@ -59,6 +60,7 @@
   }
   .pill.bull{background:#dcfce7;color:#166534}
   .pill.bear{background:#fee2e2;color:#991b1b}
+  .pill.run{background:#ede9fe;color:#5b21b6}
   svg{
     width:100%;
     height:auto;
@@ -90,6 +92,7 @@
   .swatch{display:inline-flex;align-items:center;gap:6px;margin-right:14px}
   .sw{width:14px;height:14px;border-radius:3px;display:inline-block}
   .sw-line{display:inline-block;width:22px;height:0;border-top:2px dashed var(--anchor);vertical-align:middle;margin-right:6px}
+  .sw-bracket{display:inline-block;width:22px;height:8px;border-top:2px solid var(--runBracket);border-left:2px solid var(--runBracket);border-right:2px solid var(--runBracket);vertical-align:middle;margin-right:6px}
   @media (max-width: 920px){.grid{grid-template-columns:1fr}}
 </style>
 </head>
@@ -97,14 +100,14 @@
 
 <header>
   <h1>CISD — Change in State of Delivery</h1>
-  <p>Reversal confirmation on the aligned LTF. Anchor = open of the last bearish (or bullish) LTF candle at/before the HTF window's extreme. CISD fires the moment a candle closes through that anchor.</p>
+  <p>Reversal confirmation on the aligned LTF. Identify the <b>consecutive run of bearish (or bullish) candles</b> terminating at or before the HTF window's extreme. Anchor = <b>open of the oldest candle</b> in that run. CISD fires when a candle closes through that anchor.</p>
 </header>
 
 <div class="grid">
 
   <!-- ============ PANEL 1: BULLISH CISD ============ -->
   <div class="panel">
-    <h2>1. Bullish CISD <span class="pill bull">aligned LTF</span></h2>
+    <h2>1. Bullish CISD <span class="pill bull">aligned LTF</span><span class="pill run">consecutive run</span></h2>
     <svg viewBox="0 0 720 420" preserveAspectRatio="xMidYMid meet">
       <g stroke="var(--grid)" stroke-width="1">
         <line x1="0" y1="80"  x2="720" y2="80"/>
@@ -113,10 +116,9 @@
         <line x1="0" y1="320" x2="720" y2="320"/>
       </g>
 
-      <!-- HTF candle on the right -->
+      <!-- HTF candle (right) -->
       <line x1="600" y1="70"  x2="600" y2="350" stroke="var(--wick)" stroke-width="1"/>
       <rect x="580" y="110" width="40" height="130" fill="var(--bull)" stroke="#000" stroke-width="0.6"/>
-
       <g stroke="var(--muted)" stroke-width="0.8" stroke-dasharray="2,3">
         <line x1="120" y1="70"  x2="700" y2="70"/>
         <line x1="120" y1="110" x2="700" y2="110"/>
@@ -130,25 +132,33 @@
         <text x="640" y="362">Low</text>
       </g>
 
-      <!-- bull pre-context (small green) -->
+      <!-- pre-bull -->
       <line x1="160" y1="225" x2="160" y2="195" stroke="var(--wick)" stroke-width="1"/>
       <rect x="148" y="200" width="24" height="20" fill="var(--bull)" stroke="#000" stroke-width="0.5"/>
 
-      <!-- bear-1 ANCHOR: open=200, close=230 -->
-      <line x1="210" y1="195" x2="210" y2="235" stroke="var(--wick)" stroke-width="1"/>
-      <rect x="198" y="200" width="24" height="30" fill="var(--bear)" stroke="#000" stroke-width="0.5"/>
+      <!-- run: bear-OLDEST (open=200, close=240) -->
+      <line x1="210" y1="195" x2="210" y2="245" stroke="var(--wick)" stroke-width="1"/>
+      <rect x="198" y="200" width="24" height="40" fill="var(--bear)" stroke="#000" stroke-width="0.5"/>
 
-      <!-- bear-2 LOW PRINT: open=230, close=320, wick low y=350 -->
-      <line x1="260" y1="230" x2="260" y2="350" stroke="var(--wick)" stroke-width="1"/>
-      <rect x="248" y="230" width="24" height="90" fill="var(--bear)" stroke="#000" stroke-width="0.5"/>
+      <!-- run: bear-LATEST (open=240, close=320, wick low=350) — also low-print -->
+      <line x1="260" y1="240" x2="260" y2="350" stroke="var(--wick)" stroke-width="1"/>
+      <rect x="248" y="240" width="24" height="80" fill="var(--bear)" stroke="#000" stroke-width="0.5"/>
 
-      <!-- TRIGGER bull: open=320, close=180 -->
+      <!-- trigger bull -->
       <line x1="310" y1="178" x2="310" y2="325" stroke="var(--wick)" stroke-width="1"/>
       <rect x="298" y="180" width="24" height="140" fill="var(--bull)" stroke="#000" stroke-width="0.5"/>
 
-      <!-- ANCHOR line at y=200 -->
+      <!-- run bracket above -->
+      <g stroke="var(--runBracket)" stroke-width="1.4" fill="none">
+        <line x1="186" y1="180" x2="276" y2="180"/>
+        <line x1="186" y1="180" x2="186" y2="188"/>
+        <line x1="276" y1="180" x2="276" y2="188"/>
+      </g>
+      <text x="231" y="174" text-anchor="middle" font-size="10.5" fill="var(--runBracket)" font-weight="600">consecutive bearish run (cover ALL)</text>
+
+      <!-- anchor line at y=200 -->
       <line x1="186" y1="200" x2="430" y2="200" stroke="var(--anchor)" stroke-width="1.6" stroke-dasharray="5,4"/>
-      <text x="430" y="196" font-size="11" fill="var(--anchor)" font-weight="600">anchor (open of last bearish before low)</text>
+      <text x="430" y="196" font-size="11" fill="var(--anchor)" font-weight="600">anchor = open of OLDEST bearish in the run</text>
 
       <line x1="260" y1="350" x2="600" y2="350" stroke="var(--muted)" stroke-width="0.6" stroke-dasharray="2,3"/>
 
@@ -164,13 +174,13 @@
       <text x="235" y="56" text-anchor="middle" fill="var(--muted)" font-size="10">HTF candle window (LTF bars within it)</text>
     </svg>
     <div class="caption">
-      <b>Bullish CISD.</b> Inside the HTF window, find the LTF bar with the lowest low. Walk backward to the <b>last bearish candle at or before that low</b>. Anchor = its <span class="key">open</span>. CISD fires when an LTF bar's <span class="key">close</span> rises <b>above the anchor</b>.
+      <b>Bullish CISD.</b> Inside the HTF window, find the LTF bar that prints the lowest low. Capture the <b>full consecutive run of bearish candles</b> that terminates at/before that low. Anchor = <span class="key">open</span> of the <b>oldest</b> candle in the run (top of the displacement leg). CISD fires when an LTF bar's <span class="key">close</span> crosses <b>above the anchor</b>.
     </div>
   </div>
 
   <!-- ============ PANEL 2: BEARISH CISD ============ -->
   <div class="panel">
-    <h2>2. Bearish CISD <span class="pill bear">aligned LTF</span></h2>
+    <h2>2. Bearish CISD <span class="pill bear">aligned LTF</span><span class="pill run">consecutive run</span></h2>
     <svg viewBox="0 0 720 420" preserveAspectRatio="xMidYMid meet">
       <g stroke="var(--grid)" stroke-width="1">
         <line x1="0" y1="80"  x2="720" y2="80"/>
@@ -179,10 +189,9 @@
         <line x1="0" y1="320" x2="720" y2="320"/>
       </g>
 
-      <!-- HTF bearish candle -->
+      <!-- HTF bearish -->
       <line x1="600" y1="70"  x2="600" y2="350" stroke="var(--wick)" stroke-width="1"/>
       <rect x="580" y="110" width="40" height="130" fill="var(--bear)" stroke="#000" stroke-width="0.6"/>
-
       <g stroke="var(--muted)" stroke-width="0.8" stroke-dasharray="2,3">
         <line x1="120" y1="70"  x2="700" y2="70"/>
         <line x1="120" y1="110" x2="700" y2="110"/>
@@ -196,24 +205,32 @@
         <text x="640" y="362">Low</text>
       </g>
 
-      <!-- bear pre-context -->
+      <!-- pre-bear -->
       <line x1="160" y1="195" x2="160" y2="225" stroke="var(--wick)" stroke-width="1"/>
       <rect x="148" y="200" width="24" height="20" fill="var(--bear)" stroke="#000" stroke-width="0.5"/>
 
-      <!-- bull-1 ANCHOR: open=220, close=190 -->
-      <line x1="210" y1="185" x2="210" y2="225" stroke="var(--wick)" stroke-width="1"/>
-      <rect x="198" y="190" width="24" height="30" fill="var(--bull)" stroke="#000" stroke-width="0.5"/>
+      <!-- run: bull-OLDEST (open=220, close=180) -->
+      <line x1="210" y1="175" x2="210" y2="225" stroke="var(--wick)" stroke-width="1"/>
+      <rect x="198" y="180" width="24" height="40" fill="var(--bull)" stroke="#000" stroke-width="0.5"/>
 
-      <!-- bull-2 HIGHEST high: open=190, close=110, wick=70 -->
-      <line x1="260" y1="70" x2="260" y2="190" stroke="var(--wick)" stroke-width="1"/>
-      <rect x="248" y="110" width="24" height="80" fill="var(--bull)" stroke="#000" stroke-width="0.5"/>
+      <!-- run: bull-LATEST (open=180, close=110, wick high=70) — also high-print -->
+      <line x1="260" y1="70" x2="260" y2="180" stroke="var(--wick)" stroke-width="1"/>
+      <rect x="248" y="110" width="24" height="70" fill="var(--bull)" stroke="#000" stroke-width="0.5"/>
 
-      <!-- TRIGGER bear: open=110, close=240 -->
+      <!-- trigger bear -->
       <line x1="310" y1="105" x2="310" y2="248" stroke="var(--wick)" stroke-width="1"/>
       <rect x="298" y="110" width="24" height="130" fill="var(--bear)" stroke="#000" stroke-width="0.5"/>
 
+      <!-- run bracket below -->
+      <g stroke="var(--runBracket)" stroke-width="1.4" fill="none">
+        <line x1="186" y1="240" x2="276" y2="240"/>
+        <line x1="186" y1="232" x2="186" y2="240"/>
+        <line x1="276" y1="232" x2="276" y2="240"/>
+      </g>
+      <text x="231" y="256" text-anchor="middle" font-size="10.5" fill="var(--runBracket)" font-weight="600">consecutive bullish run (cover ALL)</text>
+
       <line x1="186" y1="220" x2="430" y2="220" stroke="var(--anchor)" stroke-width="1.6" stroke-dasharray="5,4"/>
-      <text x="430" y="216" font-size="11" fill="var(--anchor)" font-weight="600">anchor (open of last bullish before high)</text>
+      <text x="430" y="216" font-size="11" fill="var(--anchor)" font-weight="600">anchor = open of OLDEST bullish in the run</text>
 
       <line x1="260" y1="70" x2="600" y2="70" stroke="var(--muted)" stroke-width="0.6" stroke-dasharray="2,3"/>
 
@@ -229,13 +246,13 @@
       <text x="235" y="56" text-anchor="middle" fill="var(--muted)" font-size="10">HTF candle window (LTF bars within it)</text>
     </svg>
     <div class="caption">
-      <b>Bearish CISD.</b> Inside the HTF window, find the bar with the highest high. Walk backward to the <b>last bullish candle at or before that high</b>. Anchor = its <span class="key">open</span>. CISD fires when an LTF bar's <span class="key">close</span> drops <b>below the anchor</b>.
+      <b>Bearish CISD.</b> Capture the <b>full consecutive bullish run</b> ending at/before the highest high. Anchor = <span class="key">open</span> of the <b>oldest</b> bullish in that run (bottom of the displacement leg). CISD fires when an LTF bar's <span class="key">close</span> drops <b>below the anchor</b>.
     </div>
   </div>
 
-  <!-- ============ PANEL 3: LOW BAR IS BULLISH (still walk back) ============ -->
+  <!-- ============ PANEL 3: LOW BAR IS BULLISH — STILL CAPTURE THE RUN ============ -->
   <div class="panel">
-    <h2>3. Low bar is bullish — keep walking back <span class="pill bull">walk back</span></h2>
+    <h2>3. Low bar is bullish — capture the run before it <span class="pill bull">walk back</span></h2>
     <svg viewBox="0 0 720 420" preserveAspectRatio="xMidYMid meet">
       <g stroke="var(--grid)" stroke-width="1">
         <line x1="0" y1="80"  x2="720" y2="80"/>
@@ -244,10 +261,9 @@
         <line x1="0" y1="320" x2="720" y2="320"/>
       </g>
 
-      <!-- HTF candle (bullish) -->
+      <!-- HTF bullish -->
       <line x1="600" y1="70"  x2="600" y2="350" stroke="var(--wick)" stroke-width="1"/>
       <rect x="580" y="110" width="40" height="130" fill="var(--bull)" stroke="#000" stroke-width="0.6"/>
-
       <g stroke="var(--muted)" stroke-width="0.8" stroke-dasharray="2,3">
         <line x1="120" y1="70"  x2="700" y2="70"/>
         <line x1="120" y1="110" x2="700" y2="110"/>
@@ -261,44 +277,58 @@
         <text x="640" y="362">Low</text>
       </g>
 
-      <!-- bear-A (anchor) open=200, close=270 -->
-      <line x1="180" y1="195" x2="180" y2="275" stroke="var(--wick)" stroke-width="1"/>
-      <rect x="168" y="200" width="24" height="70" fill="var(--bear)" stroke="#000" stroke-width="0.5"/>
+      <!-- bear-OLDEST (open=200, close=240) -->
+      <line x1="170" y1="195" x2="170" y2="245" stroke="var(--wick)" stroke-width="1"/>
+      <rect x="158" y="200" width="24" height="40" fill="var(--bear)" stroke="#000" stroke-width="0.5"/>
 
-      <!-- bull-B small green -->
-      <line x1="230" y1="230" x2="230" y2="275" stroke="var(--wick)" stroke-width="1"/>
-      <rect x="218" y="235" width="24" height="35" fill="var(--bull)" stroke="#000" stroke-width="0.5"/>
+      <!-- bear-MID (open=240, close=275) -->
+      <line x1="210" y1="240" x2="210" y2="280" stroke="var(--wick)" stroke-width="1"/>
+      <rect x="198" y="240" width="24" height="35" fill="var(--bear)" stroke="#000" stroke-width="0.5"/>
 
-      <!-- bull-C LOW PRINT, GREEN -->
-      <line x1="280" y1="200" x2="280" y2="350" stroke="var(--wick)" stroke-width="1"/>
-      <rect x="268" y="200" width="24" height="35" fill="var(--bull)" stroke="#000" stroke-width="0.5"/>
+      <!-- bear-LATEST (open=275, close=305) — last red before the low bar -->
+      <line x1="250" y1="275" x2="250" y2="310" stroke="var(--wick)" stroke-width="1"/>
+      <rect x="238" y="275" width="24" height="30" fill="var(--bear)" stroke="#000" stroke-width="0.5"/>
+
+      <!-- bull LOW PRINT (open=305, close=270, wick low=350) -->
+      <line x1="290" y1="270" x2="290" y2="350" stroke="var(--wick)" stroke-width="1"/>
+      <rect x="278" y="270" width="24" height="35" fill="var(--bull)" stroke="#000" stroke-width="0.5"/>
 
       <!-- trigger bull -->
-      <line x1="330" y1="178" x2="330" y2="205" stroke="var(--wick)" stroke-width="1"/>
-      <rect x="318" y="180" width="24" height="20" fill="var(--bull)" stroke="#000" stroke-width="0.5"/>
+      <line x1="335" y1="178" x2="335" y2="275" stroke="var(--wick)" stroke-width="1"/>
+      <rect x="323" y="180" width="24" height="90" fill="var(--bull)" stroke="#000" stroke-width="0.5"/>
 
-      <line x1="156" y1="200" x2="430" y2="200" stroke="var(--anchor)" stroke-width="1.6" stroke-dasharray="5,4"/>
-      <text x="430" y="196" font-size="11" fill="var(--anchor)" font-weight="600">anchor still = last bearish before low</text>
+      <!-- run bracket above all 3 reds -->
+      <g stroke="var(--runBracket)" stroke-width="1.4" fill="none">
+        <line x1="146" y1="180" x2="266" y2="180"/>
+        <line x1="146" y1="180" x2="146" y2="188"/>
+        <line x1="266" y1="180" x2="266" y2="188"/>
+      </g>
+      <text x="206" y="174" text-anchor="middle" font-size="10.5" fill="var(--runBracket)" font-weight="600">consecutive bearish run</text>
 
-      <path d="M 280 360 Q 220 380 180 290" fill="none" stroke="var(--muted)" stroke-width="1" stroke-dasharray="3,3"/>
-      <polygon points="180,290 184,300 174,300" fill="var(--muted)"/>
-      <text x="225" y="395" font-size="10" fill="var(--muted)" text-anchor="middle">walk back from low to last red</text>
+      <!-- anchor line at y=200 -->
+      <line x1="146" y1="200" x2="430" y2="200" stroke="var(--anchor)" stroke-width="1.6" stroke-dasharray="5,4"/>
+      <text x="430" y="196" font-size="11" fill="var(--anchor)" font-weight="600">anchor = open of OLDEST bearish (top of run)</text>
 
-      <line x1="280" y1="350" x2="600" y2="350" stroke="var(--muted)" stroke-width="0.6" stroke-dasharray="2,3"/>
+      <!-- walk-back arrow from low to last red -->
+      <path d="M 290 360 Q 270 380 250 320" fill="none" stroke="var(--muted)" stroke-width="1" stroke-dasharray="3,3"/>
+      <polygon points="250,320 254,330 244,330" fill="var(--muted)"/>
+      <text x="280" y="395" font-size="10" fill="var(--muted)" text-anchor="middle">walk back through the run</text>
 
-      <circle cx="330" cy="180" r="3.5" fill="var(--trigger)"/>
-      <text x="338" y="172" font-size="11" fill="var(--bull-dark)" font-weight="600">CISD confirmed</text>
+      <line x1="290" y1="350" x2="600" y2="350" stroke="var(--muted)" stroke-width="0.6" stroke-dasharray="2,3"/>
+
+      <circle cx="335" cy="180" r="3.5" fill="var(--trigger)"/>
+      <text x="343" y="172" font-size="11" fill="var(--bull-dark)" font-weight="600">CISD confirmed</text>
 
       <text x="600" y="395" text-anchor="middle" fill="var(--note)" font-size="11" font-weight="600">HTF CANDLE</text>
     </svg>
     <div class="caption">
-      <b>Edge case.</b> When the low-print bar itself is bullish, the anchor is not abandoned. Keep walking backward through any number of bars until the <b>nearest preceding bearish candle</b> is found, and use its open as the anchor.
+      <b>Edge case.</b> When the low-print bar is bullish, walk backward through the bars until the run is reached, then <b>cover the entire consecutive bearish run</b>. Anchor = open of the oldest red (top of run), regardless of how many candles between the run and the low.
     </div>
   </div>
 
-  <!-- ============ PANEL 4: SINGLE vs CONSECUTIVE ============ -->
+  <!-- ============ PANEL 4: SINGLE vs CONSECUTIVE — same rule ============ -->
   <div class="panel">
-    <h2>4. Single or consecutive — same rule <span class="pill bull">last bearish</span></h2>
+    <h2>4. Single or consecutive — same rule <span class="pill run">oldest = anchor</span></h2>
     <svg viewBox="0 0 720 420" preserveAspectRatio="xMidYMid meet">
       <g stroke="var(--grid)" stroke-width="1">
         <line x1="0" y1="80"  x2="720" y2="80"/>
@@ -306,54 +336,75 @@
         <line x1="0" y1="240" x2="720" y2="240"/>
         <line x1="0" y1="320" x2="720" y2="320"/>
       </g>
-
       <line x1="370" y1="60" x2="370" y2="380" stroke="var(--border)" stroke-width="1" stroke-dasharray="2,3"/>
 
-      <!-- Scene A -->
+      <!-- ===== Scene A: 1 bearish before low ===== -->
       <text x="180" y="78" font-size="11" fill="var(--muted)" text-anchor="middle" font-style="italic">Scene A: 1 bearish before low</text>
 
+      <!-- pre-bull -->
       <line x1="100" y1="190" x2="100" y2="215" stroke="var(--wick)" stroke-width="1"/>
       <rect x="88" y="195" width="24" height="20" fill="var(--bull)" stroke="#000" stroke-width="0.5"/>
 
-      <line x1="150" y1="205" x2="150" y2="305" stroke="var(--wick)" stroke-width="1"/>
-      <rect x="138" y="210" width="24" height="90" fill="var(--bear)" stroke="#000" stroke-width="0.5"/>
+      <!-- single red, also makes low (open=210, close=320, wick low=345) -->
+      <line x1="155" y1="205" x2="155" y2="345" stroke="var(--wick)" stroke-width="1"/>
+      <rect x="143" y="210" width="24" height="110" fill="var(--bear)" stroke="#000" stroke-width="0.5"/>
 
-      <line x1="200" y1="300" x2="200" y2="345" stroke="var(--wick)" stroke-width="1"/>
-      <rect x="188" y="300" width="24" height="30" fill="var(--bear)" stroke="#000" stroke-width="0.5"/>
+      <!-- trigger bull -->
+      <line x1="210" y1="178" x2="210" y2="325" stroke="var(--wick)" stroke-width="1"/>
+      <rect x="198" y="180" width="24" height="140" fill="var(--bull)" stroke="#000" stroke-width="0.5"/>
 
-      <line x1="250" y1="178" x2="250" y2="305" stroke="var(--wick)" stroke-width="1"/>
-      <rect x="238" y="180" width="24" height="125" fill="var(--bull)" stroke="#000" stroke-width="0.5"/>
+      <!-- run bracket -->
+      <g stroke="var(--runBracket)" stroke-width="1.4" fill="none">
+        <line x1="143" y1="190" x2="167" y2="190"/>
+        <line x1="143" y1="190" x2="143" y2="198"/>
+        <line x1="167" y1="190" x2="167" y2="198"/>
+      </g>
 
-      <line x1="125" y1="300" x2="290" y2="300" stroke="var(--anchor)" stroke-width="1.6" stroke-dasharray="5,4"/>
-      <circle cx="250" cy="180" r="3.5" fill="var(--trigger)"/>
-      <text x="258" y="172" font-size="11" fill="var(--bull-dark)" font-weight="600">CISD ✓</text>
-      <text x="180" y="370" font-size="10" fill="var(--muted)" text-anchor="middle">anchor = open of the last red</text>
+      <line x1="143" y1="210" x2="335" y2="210" stroke="var(--anchor)" stroke-width="1.6" stroke-dasharray="5,4"/>
+      <text x="195" y="370" font-size="10" fill="var(--muted)" text-anchor="middle">anchor = open of the (only) red</text>
 
-      <!-- Scene B -->
+      <circle cx="210" cy="180" r="3.5" fill="var(--trigger)"/>
+      <text x="218" y="172" font-size="11" fill="var(--bull-dark)" font-weight="600">CISD ✓</text>
+
+      <!-- ===== Scene B: 3 consecutive bearish before low ===== -->
       <text x="540" y="78" font-size="11" fill="var(--muted)" text-anchor="middle" font-style="italic">Scene B: 3 consecutive bearish before low</text>
 
-      <line x1="420" y1="190" x2="420" y2="215" stroke="var(--wick)" stroke-width="1"/>
-      <rect x="408" y="195" width="24" height="20" fill="var(--bull)" stroke="#000" stroke-width="0.5"/>
+      <!-- pre-bull -->
+      <line x1="420" y1="195" x2="420" y2="220" stroke="var(--wick)" stroke-width="1"/>
+      <rect x="408" y="200" width="24" height="20" fill="var(--bull)" stroke="#000" stroke-width="0.5"/>
 
-      <line x1="460" y1="205" x2="460" y2="245" stroke="var(--wick)" stroke-width="1"/>
-      <rect x="448" y="210" width="24" height="30" fill="var(--bear)" stroke="#000" stroke-width="0.5"/>
+      <!-- bear-OLDEST (open=210, close=245) -->
+      <line x1="465" y1="205" x2="465" y2="250" stroke="var(--wick)" stroke-width="1"/>
+      <rect x="453" y="210" width="24" height="35" fill="var(--bear)" stroke="#000" stroke-width="0.5"/>
 
-      <line x1="500" y1="240" x2="500" y2="295" stroke="var(--wick)" stroke-width="1"/>
-      <rect x="488" y="240" width="24" height="50" fill="var(--bear)" stroke="#000" stroke-width="0.5"/>
+      <!-- bear-MID (open=245, close=290) -->
+      <line x1="510" y1="245" x2="510" y2="295" stroke="var(--wick)" stroke-width="1"/>
+      <rect x="498" y="245" width="24" height="45" fill="var(--bear)" stroke="#000" stroke-width="0.5"/>
 
-      <line x1="540" y1="290" x2="540" y2="345" stroke="var(--wick)" stroke-width="1"/>
-      <rect x="528" y="290" width="24" height="35" fill="var(--bear)" stroke="#000" stroke-width="0.5"/>
+      <!-- bear-LATEST = makes low (open=290, close=325, wick low=345) -->
+      <line x1="555" y1="290" x2="555" y2="345" stroke="var(--wick)" stroke-width="1"/>
+      <rect x="543" y="290" width="24" height="35" fill="var(--bear)" stroke="#000" stroke-width="0.5"/>
 
-      <line x1="590" y1="178" x2="590" y2="305" stroke="var(--wick)" stroke-width="1"/>
-      <rect x="578" y="180" width="24" height="125" fill="var(--bull)" stroke="#000" stroke-width="0.5"/>
+      <!-- trigger bull -->
+      <line x1="600" y1="178" x2="600" y2="325" stroke="var(--wick)" stroke-width="1"/>
+      <rect x="588" y="180" width="24" height="140" fill="var(--bull)" stroke="#000" stroke-width="0.5"/>
 
-      <line x1="436" y1="290" x2="630" y2="290" stroke="var(--anchor)" stroke-width="1.6" stroke-dasharray="5,4"/>
-      <text x="440" y="286" font-size="11" fill="var(--anchor)" font-weight="600">anchor = last bearish (right at the low)</text>
-      <circle cx="590" cy="180" r="3.5" fill="var(--trigger)"/>
-      <text x="598" y="172" font-size="11" fill="var(--bull-dark)" font-weight="600">CISD ✓</text>
+      <!-- run bracket -->
+      <g stroke="var(--runBracket)" stroke-width="1.4" fill="none">
+        <line x1="441" y1="190" x2="567" y2="190"/>
+        <line x1="441" y1="190" x2="441" y2="198"/>
+        <line x1="567" y1="190" x2="567" y2="198"/>
+      </g>
+      <text x="504" y="184" font-size="10.5" fill="var(--runBracket)" font-weight="600" text-anchor="middle">consecutive bearish run</text>
+
+      <line x1="441" y1="210" x2="660" y2="210" stroke="var(--anchor)" stroke-width="1.6" stroke-dasharray="5,4"/>
+      <text x="465" y="206" font-size="11" fill="var(--anchor)" font-weight="600">anchor = open of OLDEST red (top)</text>
+
+      <circle cx="600" cy="180" r="3.5" fill="var(--trigger)"/>
+      <text x="608" y="172" font-size="11" fill="var(--bull-dark)" font-weight="600">CISD ✓</text>
     </svg>
     <div class="caption">
-      <b>Single vs consecutive.</b> The rule does not care how many bearish candles precede the low. It takes the <b>last bearish candle reachable by walking backward from the low</b>. Open of that candle = anchor.
+      <b>Single vs consecutive — same rule.</b> Whether the run has 1 candle or many, <b>cover the entire run</b>. Anchor is always the <span class="key">open</span> of the <b>oldest</b> candle (the highest open, at the top of the down-leg for bullish; lowest open, at the bottom of the up-leg for bearish).
     </div>
   </div>
 
@@ -361,15 +412,20 @@
 
 <div class="legend">
   <div>
-    <span class="swatch"><span class="sw" style="background:var(--bull)"></span> Bullish LTF candle</span>
-    <span class="swatch"><span class="sw" style="background:var(--bear)"></span> Bearish LTF candle</span>
-    <span class="swatch"><span class="sw-line"></span>Anchor (open of last opposite-direction candle at/before extreme)</span>
-    <span class="swatch"><span class="sw" style="background:var(--trigger);border-radius:50%;width:10px;height:10px"></span>CISD trigger candle</span>
+    <span class="swatch"><span class="sw" style="background:#22c55e"></span> Bullish LTF candle</span>
+    <span class="swatch"><span class="sw" style="background:#ef4444"></span> Bearish LTF candle</span>
+    <span class="swatch"><span class="sw-line"></span>Anchor (open of oldest opposite-direction candle in the run)</span>
+    <span class="swatch"><span class="sw-bracket"></span>Consecutive run boundary</span>
+    <span class="swatch"><span class="sw" style="background:#22c55e;border-radius:50%;width:10px;height:10px"></span>CISD trigger</span>
   </div>
-  <div style="margin-top:8px">
-    <b>Definition recap.</b> CISD on the aligned LTF confirms a reversal implied by the HTF setup.
-    <b>Bullish:</b> low of HTF window → walk back to the last bearish LTF candle → anchor = its open → CISD when a candle closes <i>above</i> anchor.
-    <b>Bearish:</b> mirror at the high.
+  <div style="margin-top:10px">
+    <b>Pseudocode (bullish — mirror for bearish).</b>
+    <code class="key">lowBar = argmin(low) inside HTF window.
+    walk back from lowBar to first bearish candle.
+    extend run backward through every consecutive bearish candle.
+    anchor = open(oldest bearish in run).
+    CISD = first LTF bar with close &gt; anchor.</code>
+    Re-anchor on a fresh lower low. Strict <code class="key">&gt;</code> for bull / <code class="key">&lt;</code> for bear.
   </div>
 </div>
 
