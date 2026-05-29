@@ -9,11 +9,11 @@ g_tf   = "Timeframe"
 g_bias = "Bias"
 g_lc2  = "Closure Line - C2 (depth 1)"
 g_lc3  = "Closure Line - C3 (depth 2)"
-g_box  = "Equilibrium Box (LTF only)"
+g_box  = "Equilibrium Box (LTF + Middle TF only)"
 g_open = "HTF Opening Line (LTF only)"
 g_disp = "Display"
 
-htfStr  = input.timeframe("240", "HTF (reversal source)", group = g_tf, tooltip = "Aligned LTF: 15-1, 30-3, 60-5, 240-15, 1D-60, 1W-240")
+htfStr  = input.timeframe("240", "HTF (reversal source)", group = g_tf, tooltip = "Aligned LTF + Middle TF: 1D→1H+4H, 240→15+60, 60→5+15, 30→3+15, 15→1+5")
 biasStr = input.string("Auto", "Bias", options = ["Auto", "Bullish only", "Bearish only"], group = g_bias)
 
 // C2 closure
@@ -22,7 +22,7 @@ line1Color    = input.color(color.new(#ff1744, 0),"Color",                      
 line1Width    = input.int(2, "Width", minval = 1, maxval = 5,                             group = g_lc2)
 line1Extra    = input.int(1, "Extension (HTF bars)", minval = 0, maxval = 10,             group = g_lc2)
 line1StyleStr = input.string("Solid", "Style", options = ["Solid","Dashed","Dotted"],     group = g_lc2)
-line1OnLtf    = input.bool(true, "Also render on aligned LTF chart",                      group = g_lc2)
+line1OnLtf    = input.bool(true, "Also render on aligned LTF / middle TF",                group = g_lc2)
 
 // C3 closure
 showLine2     = input.bool(true,                  "Show closure line",                   group = g_lc3)
@@ -30,7 +30,7 @@ line2Color    = input.color(color.new(#ff9100, 0),"Color",                      
 line2Width    = input.int(2, "Width", minval = 1, maxval = 5,                             group = g_lc3)
 line2Extra    = input.int(1, "Extension (HTF bars)", minval = 0, maxval = 10,             group = g_lc3)
 line2StyleStr = input.string("Solid", "Style", options = ["Solid","Dashed","Dotted"],     group = g_lc3)
-line2OnLtf    = input.bool(true, "Also render on aligned LTF chart",                      group = g_lc3)
+line2OnLtf    = input.bool(true, "Also render on aligned LTF / middle TF",                group = g_lc3)
 
 // Equilibrium box
 showBox       = input.bool(true,                  "Show equilibrium box",                 group = g_box)
@@ -62,14 +62,21 @@ verticalExtendFn(string e) =>
     e == "Both" ? extend.both : e == "Up" ? extend.right : e == "Down" ? extend.left : extend.none
 
 // =====================================================================
-// Context / aligned timeframe
+// Aligned timeframe map (Primary LTF + Middle TF)
 // =====================================================================
-alignedLtf = htfStr == "15"  ? "1"   : htfStr == "30"  ? "3"   : htfStr == "60"  ? "5"   : htfStr == "240" ? "15"  : htfStr == "1D"  ? "60"  : htfStr == "1W"  ? "240" : ""
+//   1D  -> 1H  + 4H
+//   4H  -> 15m + 1H
+//   1H  -> 5m  + 15m
+//   30m -> 3m  + 15m
+//   15m -> 1m  + 5m
+alignedLtf    = htfStr == "15" ? "1"  : htfStr == "30" ? "3"  : htfStr == "60" ? "5"  : htfStr == "240" ? "15" : htfStr == "1D" ? "60"  : ""
+alignedMidTf  = htfStr == "15" ? "5"  : htfStr == "30" ? "15" : htfStr == "60" ? "15" : htfStr == "240" ? "60" : htfStr == "1D" ? "240" : ""
 
 chartTf    = timeframe.period
 isHtfChart = chartTf == htfStr
-isLtfChart = (alignedLtf != "") and (chartTf == alignedLtf)
-hasContext = isHtfChart or isLtfChart
+isLtfChart = (alignedLtf   != "") and (chartTf == alignedLtf)
+isMidChart = (alignedMidTf != "") and (chartTf == alignedMidTf)
+hasContext = isHtfChart or isLtfChart or isMidChart
 
 htfSec     = timeframe.in_seconds(htfStr)
 chartSec   = timeframe.in_seconds()
@@ -114,8 +121,8 @@ bearFire = revBear1 or revBear2
 // =====================================================================
 // Closure lines
 // =====================================================================
-canRender1 = hasContext and (isHtfChart or (isLtfChart and line1OnLtf))
-canRender2 = hasContext and (isHtfChart or (isLtfChart and line2OnLtf))
+canRender1 = hasContext and (isHtfChart or ((isLtfChart or isMidChart) and line1OnLtf))
+canRender2 = hasContext and (isHtfChart or ((isLtfChart or isMidChart) and line2OnLtf))
 
 if showLine1 and canRender1 and inDisplay
     if revBull1
@@ -130,9 +137,9 @@ if showLine2 and canRender2 and inDisplay
         line.new(bar_index - barsPerHtf * 3, htfH3, bar_index + barsPerHtf * line2Extra, htfH3, color = line2Color, width = line2Width, style = lineStyleFn(line2StyleStr), xloc = xloc.bar_index)
 
 // =====================================================================
-// Equilibrium box  (LTF only)
+// Equilibrium box  (Primary LTF AND Middle TF only — never on HTF)
 // =====================================================================
-canBox = isLtfChart and showBox
+canBox = (isLtfChart or isMidChart) and showBox
 
 if canBox and inDisplay and not na(currentHtfOpen) and (bullFire or bearFire)
     eqMid    = bullFire ? (currentHtfOpen + htfL1) / 2.0 : (currentHtfOpen + htfH1) / 2.0
@@ -145,7 +152,7 @@ if canBox and inDisplay and not na(currentHtfOpen) and (bullFire or bearFire)
         box.new(boxLeft, eqMid, boxRight, currentHtfOpen, bgcolor = boxBearColor, border_color = boxBearBorder, border_width = boxBorderW, xloc = xloc.bar_index)
 
 // =====================================================================
-// HTF opening line (LTF only, VERTICAL line)
+// HTF opening line (Primary LTF only, VERTICAL line)
 // =====================================================================
 canOpen = isLtfChart and showOpen
 var line htfOpenLn = na
