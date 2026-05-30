@@ -1,24 +1,24 @@
 // This Pine Script® source code is subject to the terms of the Mozilla Public License 2.0
 // © SMT Weekly Quarters - Multi-Pair (NQ/YM, EURUSD/GBPUSD, XAUUSD/XAGUSD)
-// Apply on Daily or 1H chart. Each weekly block = 5 daily quarters (Mon -> Fri).
+// Apply on a Daily chart. Each weekly block = 5 daily quarters (Mon -> Fri).
 //   Q1 = Mon, Q2 = Tue, Q3 = Wed, Q4 = Thu, Q5 = Fri
 // - Within-week SMT: current Q vs prior Qs (XOR sweep on wick extreme)
 // - Cross-week SMT: current Q1 vs previous block's Q5
 // - Auto-detects pair from chart symbol; supports manual override
-// - On 1H chart, SMT lines align to the LTF bar that maps to the daily close
+// - Default FX/metals symbols use FOREXCOM source
 
 //@version=6
-indicator("SMT Weekly Quarters - Multi-Pair", overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=200)
+indicator("SMT Weekly Quarters - Multi-Pair", overlay=true, max_lines_count=500, max_labels_count=500)
 
 // ─── PAIR ─────────────────────────────────────────────────────────────────────
 string forceGroup = input.string("Auto", "Pair Group", options=["Auto", "NQ/YM", "EURUSD/GBPUSD", "XAUUSD/XAGUSD"], group="Pair", tooltip="Auto detects from chart ticker; or force a specific pair group.")
 
-string symNQ  = input.symbol("NQ1!",   "NQ Symbol",     group="Pair Symbols")
-string symYM  = input.symbol("YM1!",   "YM Symbol",     group="Pair Symbols")
-string symEUR = input.symbol("EURUSD", "EURUSD Symbol", group="Pair Symbols")
-string symGBP = input.symbol("GBPUSD", "GBPUSD Symbol", group="Pair Symbols")
-string symXAU = input.symbol("XAUUSD", "XAUUSD Symbol", group="Pair Symbols")
-string symXAG = input.symbol("XAGUSD", "XAGUSD Symbol", group="Pair Symbols")
+string symNQ  = input.symbol("NQ1!",            "NQ Symbol",     group="Pair Symbols")
+string symYM  = input.symbol("YM1!",            "YM Symbol",     group="Pair Symbols")
+string symEUR = input.symbol("FOREXCOM:EURUSD", "EURUSD Symbol", group="Pair Symbols")
+string symGBP = input.symbol("FOREXCOM:GBPUSD", "GBPUSD Symbol", group="Pair Symbols")
+string symXAU = input.symbol("FOREXCOM:XAUUSD", "XAUUSD Symbol", group="Pair Symbols")
+string symXAG = input.symbol("FOREXCOM:XAGUSD", "XAGUSD Symbol", group="Pair Symbols")
 
 // ─── DISPLAY ──────────────────────────────────────────────────────────────────
 int displayWeeks = input.int(8, "Show Last N Weeks", minval=1, maxval=52, group="Display")
@@ -70,61 +70,30 @@ string activeGroup = forceGroup == "Auto" ? autoGroup : forceGroup
 
 string partnerSym = activeGroup == "NQ/YM" ? (tYM ? symNQ : symYM) : activeGroup == "EURUSD/GBPUSD" ? (tGBP ? symEUR : symGBP) : (tXAG ? symXAU : symXAG)
 
-// ─── TIMEFRAME ───────────────────────────────────────────────────────────────
-bool isD  = timeframe.isdaily
-bool is1H = timeframe.period == "60"
-bool ok   = isD or is1H
+// ─── DAILY-ONLY GUARD ────────────────────────────────────────────────────────
+bool isD = timeframe.isdaily
 
-// ─── DAILY DATA (always via security; works on any TF) ──────────────────────
-[aHd, aLd, aOd, aCd] = request.security(syminfo.tickerid, "D", [high, low, open, close])
-[bHd, bLd, bOd, bCd] = request.security(partnerSym,        "D", [high, low, open, close])
-int dDow = request.security(syminfo.tickerid, "D", dayofweek(time_close - 1, "America/New_York"))
-int dWk  = request.security(syminfo.tickerid, "D", time("W"))
+// ─── DATA ─────────────────────────────────────────────────────────────────────
+float aH = high
+float aL = low
+float aO = open
+float aC = close
 
-// ─── EVENT (process at each daily close, mapped to the correct LTF bar) ─────
-bool dClosed = ta.change(time("D")) != 0
-bool evt     = ok and dClosed
+[bH, bL, bO, bC] = request.security(partnerSym, "D", [high, low, open, close])
 
-// Track first bar of each daily candle so we can box the previous one on 1H
-var int firstBarOfDay     = na
-var int firstBarOfPrevDay = na
-if dClosed and ok
-    firstBarOfPrevDay := firstBarOfDay
-    firstBarOfDay     := bar_index
+// ─── QUARTER (BY DAY OF WEEK) ────────────────────────────────────────────────
+// dayofweek: Sun=1, Mon=2, Tue=3, Wed=4, Thu=5, Fri=6, Sat=7
+// time_close - 1 ensures correct trading-day mapping (just before bar close)
+int dow = dayofweek(time_close - 1, "America/New_York")
+int q   = dow == 2 ? 1 : dow == 3 ? 2 : dow == 4 ? 3 : dow == 5 ? 4 : dow == 6 ? 5 : 0
+bool blockOn = q > 0
 
-
-// Event-frame values:
-//   On Daily chart, the just-closed daily IS the current bar -> use offset 0
-//   On 1H chart,    the just-closed daily is one LTF bar ago -> use offset 1
-float ev_aH = na, float ev_aL = na, float ev_aO = na, float ev_aC = na
-float ev_bH = na, float ev_bL = na, float ev_bO = na, float ev_bC = na
-int   ev_dow = 0
-int   ev_wk = na, int ev_prevWk = na
-int   ev_barIdx = na
-
-if isD
-    ev_aH := aHd, ev_aL := aLd, ev_aO := aOd, ev_aC := aCd
-    ev_bH := bHd, ev_bL := bLd, ev_bO := bOd, ev_bC := bCd
-    ev_dow    := dDow
-    ev_wk     := dWk
-    ev_prevWk := dWk[1]
-    ev_barIdx := bar_index
-else if is1H
-    ev_aH := aHd[1], ev_aL := aLd[1], ev_aO := aOd[1], ev_aC := aCd[1]
-    ev_bH := bHd[1], ev_bL := bLd[1], ev_bO := bOd[1], ev_bC := bCd[1]
-    ev_dow    := nz(dDow[1], 0)
-    ev_wk     := nz(dWk[1], 0)
-    ev_prevWk := nz(dWk[2], 0)
-    ev_barIdx := bar_index - 1
-
-// ─── QUARTER ─────────────────────────────────────────────────────────────────
-int q = ev_dow == 2 ? 1 : ev_dow == 3 ? 2 : ev_dow == 4 ? 3 : ev_dow == 5 ? 4 : ev_dow == 6 ? 5 : 0
-bool blockOn  = q > 0
-bool newBlock = evt and ev_wk != nz(ev_prevWk, ev_wk)
+int  wkStart   = time("W")
+bool isNewWeek = isD and wkStart != nz(wkStart[1], wkStart)
+bool newBlock  = isNewWeek
 
 // ─── DISPLAY FILTER ──────────────────────────────────────────────────────────
-int barsPerWeek = is1H ? 24 * 7 : 7
-int displayBars = displayWeeks * barsPerWeek
+int displayBars = displayWeeks * 7
 bool inDisplay  = bar_index >= (last_bar_index - displayBars)
 
 
@@ -144,7 +113,7 @@ var float q5bH = na, var float q5bL = na
 var float pv5aH = na, var float pv5aL = na, var int pv5b = na
 var float pv5bH = na, var float pv5bL = na
 
-if evt and newBlock
+if isD and newBlock
     pv5aH := q5aH, pv5aL := q5aL, pv5b := q5b
     pv5bH := q5bH, pv5bL := q5bL
     q1aH := na, q1aL := na, q1b := na
@@ -158,22 +127,22 @@ if evt and newBlock
     q4bH := na, q4bL := na
     q5bH := na, q5bL := na
 
-if evt and blockOn
+if isD and blockOn
     if q == 1
-        q1aH := ev_aH, q1aL := ev_aL, q1b := ev_barIdx
-        q1bH := ev_bH, q1bL := ev_bL
+        q1aH := aH, q1aL := aL, q1b := bar_index
+        q1bH := bH, q1bL := bL
     else if q == 2
-        q2aH := ev_aH, q2aL := ev_aL, q2b := ev_barIdx
-        q2bH := ev_bH, q2bL := ev_bL
+        q2aH := aH, q2aL := aL, q2b := bar_index
+        q2bH := bH, q2bL := bL
     else if q == 3
-        q3aH := ev_aH, q3aL := ev_aL, q3b := ev_barIdx
-        q3bH := ev_bH, q3bL := ev_bL
+        q3aH := aH, q3aL := aL, q3b := bar_index
+        q3bH := bH, q3bL := bL
     else if q == 4
-        q4aH := ev_aH, q4aL := ev_aL, q4b := ev_barIdx
-        q4bH := ev_bH, q4bL := ev_bL
+        q4aH := aH, q4aL := aL, q4b := bar_index
+        q4bH := bH, q4bL := bL
     else if q == 5
-        q5aH := ev_aH, q5aL := ev_aL, q5b := ev_barIdx
-        q5bH := ev_bH, q5bL := ev_bL
+        q5aH := aH, q5aL := aL, q5b := bar_index
+        q5bH := bH, q5bL := bL
 
 
 // ─── PRIOR HIGH/LOW (relaxed - skip missing quarters) ────────────────────────
@@ -182,7 +151,7 @@ int   pHBar  = na
 float pLowA  = na, float pLowB  = na
 int   pLBar  = na
 
-if evt and blockOn and q >= 2
+if isD and blockOn and q >= 2
     if not na(q1aH)
         pHighA := q1aH
         pHBar  := q1b
@@ -233,69 +202,61 @@ if evt and blockOn and q >= 2
 // ─── SMT DETECTION (within block, q >= 2) ────────────────────────────────────
 bool bear = false
 bool bull = false
-if evt and blockOn and q >= 2 and not na(pHighA) and not na(pHighB)
-    if (ev_aH > pHighA and not (ev_bH > pHighB)) or (ev_bH > pHighB and not (ev_aH > pHighA))
+if isD and blockOn and q >= 2 and not na(pHighA) and not na(pHighB)
+    if (aH > pHighA and not (bH > pHighB)) or (bH > pHighB and not (aH > pHighA))
         bear := true
-if evt and blockOn and q >= 2 and not na(pLowA) and not na(pLowB)
-    if (ev_aL < pLowA and not (ev_bL < pLowB)) or (ev_bL < pLowB and not (ev_aL < pLowA))
+if isD and blockOn and q >= 2 and not na(pLowA) and not na(pLowB)
+    if (aL < pLowA and not (bL < pLowB)) or (bL < pLowB and not (aL < pLowA))
         bull := true
 
 // ─── CROSS-BLOCK SMT (Q1 vs prev Q5) ─────────────────────────────────────────
 bool crossBear = false
 bool crossBull = false
-if evt and blockOn and q == 1 and not na(pv5aH) and not na(pv5bH)
-    if (ev_aH > pv5aH and not (ev_bH > pv5bH)) or (ev_bH > pv5bH and not (ev_aH > pv5aH))
+if isD and blockOn and q == 1 and not na(pv5aH) and not na(pv5bH)
+    if (aH > pv5aH and not (bH > pv5bH)) or (bH > pv5bH and not (aH > pv5aH))
         crossBear := true
-    if (ev_aL < pv5aL and not (ev_bL < pv5bL)) or (ev_bL < pv5bL and not (ev_aL < pv5aL))
+    if (aL < pv5aL and not (bL < pv5bL)) or (bL < pv5bL and not (aL < pv5aL))
         crossBull := true
 
-// ─── DRAW SMT LINES (at LTF bar close) ───────────────────────────────────────
+// ─── DRAW SMT LINES (at bar close) ───────────────────────────────────────────
 string qTagBlock = "Q" + str.tostring(q)
 
 if bear and not na(pHBar) and inDisplay and barstate.isconfirmed
-    line.new(pHBar, pHighA, ev_barIdx, ev_aH, color=bearLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
+    line.new(pHBar, pHighA, bar_index, aH, color=bearLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
     if showSmtLabel
-        label.new(ev_barIdx, ev_aH, qTagBlock, style=label.style_none, textcolor=bearLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
+        label.new(bar_index, aH, qTagBlock, style=label.style_none, textcolor=bearLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
 
 if bull and not na(pLBar) and inDisplay and barstate.isconfirmed
-    line.new(pLBar, pLowA, ev_barIdx, ev_aL, color=bullLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
+    line.new(pLBar, pLowA, bar_index, aL, color=bullLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
     if showSmtLabel
-        label.new(ev_barIdx, ev_aL, qTagBlock, style=label.style_none, textcolor=bullLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
+        label.new(bar_index, aL, qTagBlock, style=label.style_none, textcolor=bullLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
 
 if crossBear and not na(pv5b) and inDisplay and barstate.isconfirmed
-    line.new(pv5b, pv5aH, ev_barIdx, ev_aH, color=bearLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
+    line.new(pv5b, pv5aH, bar_index, aH, color=bearLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
     if showSmtLabel
-        label.new(ev_barIdx, ev_aH, "Q1*", style=label.style_none, textcolor=bearLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
+        label.new(bar_index, aH, "Q1*", style=label.style_none, textcolor=bearLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
 
 if crossBull and not na(pv5b) and inDisplay and barstate.isconfirmed
-    line.new(pv5b, pv5aL, ev_barIdx, ev_aL, color=bullLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
+    line.new(pv5b, pv5aL, bar_index, aL, color=bullLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
     if showSmtLabel
-        label.new(ev_barIdx, ev_aL, "Q1*", style=label.style_none, textcolor=bullLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
+        label.new(bar_index, aL, "Q1*", style=label.style_none, textcolor=bullLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
 
 
-// ─── QUARTER LABELS (one per daily; centered under the daily on 1H) ─────────
-if ok and showQLabel and blockOn and inDisplay and barstate.isconfirmed and evt
-    int qLblBar = is1H and not na(firstBarOfPrevDay) ? math.round((firstBarOfPrevDay + ev_barIdx) / 2) : ev_barIdx
-    label.new(qLblBar, ev_aL, "Q" + str.tostring(q), style=label.style_none, textcolor=qLabelColor, size=size.tiny, yloc=yloc.belowbar, xloc=xloc.bar_index)
+// ─── QUARTER LABELS PER CANDLE ───────────────────────────────────────────────
+if isD and showQLabel and blockOn and inDisplay and barstate.isconfirmed
+    label.new(bar_index, low, "Q" + str.tostring(q), style=label.style_none, textcolor=qLabelColor, size=size.tiny, yloc=yloc.belowbar, xloc=xloc.bar_index)
 
-// ─── PSP ─────────────────────────────────────────────────────────────────────
-bool aBull = ev_aC > ev_aO
-bool bBull = ev_bC > ev_bO
-bool isPSP = evt and blockOn and (aBull != bBull) and inDisplay
+// ─── PSP (candle color + bg tint on the daily) ───────────────────────────────
+bool aBull = aC > aO
+bool bBull = bC > bO
+bool isPSP = isD and blockOn and (aBull != bBull) and inDisplay
 
-// Daily: color the candle body + tint background of the bar
-bool isDailyPSP = isD and isPSP
-barcolor(showPSP and isDailyPSP ? pspBarColor : na, title="PSP Bar Color")
-bgcolor (showPSP and isDailyPSP ? pspBgColor  : na, title="PSP BG")
-
-// 1H: draw a translucent box over the just-closed PSP daily's range
-if is1H and isPSP and showPSP and inDisplay and barstate.isconfirmed and not na(firstBarOfPrevDay)
-    box.new(firstBarOfPrevDay, ev_aH, bar_index - 1, ev_aL, bgcolor=pspBgColor, border_color=color.new(color.black, 100), xloc=xloc.bar_index)
+barcolor(showPSP and isPSP ? pspBarColor : na, title="PSP Bar Color")
+bgcolor (showPSP and isPSP ? pspBgColor  : na, title="PSP BG")
 
 // ─── WEEK SEPARATOR ──────────────────────────────────────────────────────────
-if showSep and inDisplay and barstate.isconfirmed and evt and newBlock
-    int sepBarIdx = isD ? bar_index : nz(firstBarOfPrevDay, bar_index - 1)
-    line.new(sepBarIdx, high, sepBarIdx, low, extend=extend.both, color=sepColor, style=mkLineStyle(sepStyleI), width=sepWidth, xloc=xloc.bar_index)
+if isD and newBlock and showSep and inDisplay and barstate.isconfirmed
+    line.new(bar_index, high, bar_index, low, extend=extend.both, color=sepColor, style=mkLineStyle(sepStyleI), width=sepWidth, xloc=xloc.bar_index)
 
 // ─── ALERTS ──────────────────────────────────────────────────────────────────
 alertcondition(bull or crossBull, title="Bull SMT", message="Bull SMT Weekly Quarters")
