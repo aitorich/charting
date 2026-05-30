@@ -22,7 +22,7 @@ line1Color    = input.color(color.new(#ff1744, 0),"Color",                      
 line1Width    = input.int(2, "Width", minval = 1, maxval = 5,                                       group = g_lc2)
 line1Extra    = input.int(1, "Extension (HTF bars)", minval = 0, maxval = 10,                       group = g_lc2)
 line1StyleStr = input.string("Solid", "Style", options = ["Solid","Dashed","Dotted"],               group = g_lc2)
-line1OnLtf    = input.bool(true, "Show text label on aligned LTF / middle TF",                      group = g_lc2)
+line1OnLtf    = input.bool(true, "Show on aligned LTF / middle TF (LTF CISD + label)",            group = g_lc2)
 
 // C3 closure
 showLine2     = input.bool(true,                  "Show closure line",                              group = g_lc3)
@@ -30,7 +30,7 @@ line2Color    = input.color(color.new(#ff9100, 0),"Color",                      
 line2Width    = input.int(2, "Width", minval = 1, maxval = 5,                                       group = g_lc3)
 line2Extra    = input.int(1, "Extension (HTF bars)", minval = 0, maxval = 10,                       group = g_lc3)
 line2StyleStr = input.string("Solid", "Style", options = ["Solid","Dashed","Dotted"],               group = g_lc3)
-line2OnLtf    = input.bool(true, "Show text label on aligned LTF / middle TF",                      group = g_lc3)
+line2OnLtf    = input.bool(true, "Show on aligned LTF / middle TF (LTF CISD + label)",            group = g_lc3)
 
 // Equilibrium box
 showBox       = input.bool(true,                  "Show equilibrium box",                           group = g_box)
@@ -93,7 +93,7 @@ allowBear = biasStr == "Auto" or biasStr == "Bearish only"
 // =====================================================================
 // HTF data
 // =====================================================================
-[htfH1, htfL1, htfC1, htfH2, htfL2, htfC2, htfH3, htfL3] = request.security(syminfo.tickerid, htfStr, [high[1], low[1], close[1], high[2], low[2], close[2], high[3], low[3]], lookahead = barmerge.lookahead_on)
+[htfO1, htfH1, htfL1, htfC1, htfH2, htfL2, htfC2, htfH3, htfL3] = request.security(syminfo.tickerid, htfStr, [open[1], high[1], low[1], close[1], high[2], low[2], close[2], high[3], low[3]], lookahead = barmerge.lookahead_on)
 
 htfStartT   = time(htfStr)
 isNewHtfBar = ta.change(htfStartT) != 0
@@ -127,7 +127,11 @@ bearFire = revBear1 or revBear2
 // =====================================================================
 labelText1 = "HTF(" + htfStr + ") C2 Reversal"
 labelText2 = "HTF(" + htfStr + ") C3 Reversal"
-labelXOff  = barsPerHtf * boxExtraHtf
+// HTF C1 = the just-closed HTF candle (the reversal candle)
+c1StartBar = bar_index - barsPerHtf                        // first LTF bar of HTF C1
+c1EndBar   = bar_index - 1                                 // last  LTF bar of HTF C1
+c1MidBar   = bar_index - math.floor(barsPerHtf / 2)        // middle LTF bar of HTF C1
+bodyMidY   = na(htfO1) or na(htfC1) ? na : (htfO1 + htfC1) / 2.0  // midpoint of HTF C1 body
 
 // HTF chart: horizontal closure lines
 if showLine1 and isHtfChart and inDisplay
@@ -143,18 +147,27 @@ if showLine2 and isHtfChart and inDisplay
         line.new(bar_index - barsPerHtf * 3, htfH3, bar_index + barsPerHtf * line2Extra, htfH3, color = line2Color, width = line2Width, style = lineStyleFn(line2StyleStr), xloc = xloc.bar_index)
 
 
-// Aligned LTF / Middle TF: text label at swept reference (no horizontal line)
+// Aligned LTF / Middle TF: LTF CISD (short closure line within HTF C1's LTF span)
+//                        + text label within HTF C1's open-to-close body
 if showLine1 and (isLtfChart or isMidChart) and line1OnLtf and inDisplay
     if revBull1
-        label.new(bar_index + labelXOff, htfL2, labelText1, color = color.new(line1Color, 100), textcolor = line1Color, style = label.style_none, size = size.small, textalign = text.align_left, xloc = xloc.bar_index)
+        line.new(c1StartBar, htfL2, c1EndBar, htfL2, color = line1Color, width = line1Width, style = lineStyleFn(line1StyleStr), xloc = xloc.bar_index)
+        if not na(bodyMidY)
+            label.new(c1MidBar, bodyMidY, labelText1, color = color.new(line1Color, 100), textcolor = line1Color, style = label.style_none, size = size.small, textalign = text.align_center, xloc = xloc.bar_index)
     if revBear1
-        label.new(bar_index + labelXOff, htfH2, labelText1, color = color.new(line1Color, 100), textcolor = line1Color, style = label.style_none, size = size.small, textalign = text.align_left, xloc = xloc.bar_index)
+        line.new(c1StartBar, htfH2, c1EndBar, htfH2, color = line1Color, width = line1Width, style = lineStyleFn(line1StyleStr), xloc = xloc.bar_index)
+        if not na(bodyMidY)
+            label.new(c1MidBar, bodyMidY, labelText1, color = color.new(line1Color, 100), textcolor = line1Color, style = label.style_none, size = size.small, textalign = text.align_center, xloc = xloc.bar_index)
 
 if showLine2 and (isLtfChart or isMidChart) and line2OnLtf and inDisplay
     if revBull2
-        label.new(bar_index + labelXOff, htfL3, labelText2, color = color.new(line2Color, 100), textcolor = line2Color, style = label.style_none, size = size.small, textalign = text.align_left, xloc = xloc.bar_index)
+        line.new(c1StartBar, htfL3, c1EndBar, htfL3, color = line2Color, width = line2Width, style = lineStyleFn(line2StyleStr), xloc = xloc.bar_index)
+        if not na(bodyMidY)
+            label.new(c1MidBar, bodyMidY, labelText2, color = color.new(line2Color, 100), textcolor = line2Color, style = label.style_none, size = size.small, textalign = text.align_center, xloc = xloc.bar_index)
     if revBear2
-        label.new(bar_index + labelXOff, htfH3, labelText2, color = color.new(line2Color, 100), textcolor = line2Color, style = label.style_none, size = size.small, textalign = text.align_left, xloc = xloc.bar_index)
+        line.new(c1StartBar, htfH3, c1EndBar, htfH3, color = line2Color, width = line2Width, style = lineStyleFn(line2StyleStr), xloc = xloc.bar_index)
+        if not na(bodyMidY)
+            label.new(c1MidBar, bodyMidY, labelText2, color = color.new(line2Color, 100), textcolor = line2Color, style = label.style_none, size = size.small, textalign = text.align_center, xloc = xloc.bar_index)
 
 // =====================================================================
 // Equilibrium box  (Primary LTF AND Middle TF only — never on HTF)
