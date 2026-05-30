@@ -3,7 +3,7 @@
 // Apply on a Daily chart. Each weekly block = 5 daily quarters (Mon -> Fri).
 //   Q1 = Mon, Q2 = Tue, Q3 = Wed, Q4 = Thu, Q5 = Fri
 // - Within-week SMT: current Q vs prior Qs (XOR sweep on wick extreme)
-// - Cross-week SMT: current Q1 vs previous block's Q5
+// - Cross-block SMT: current Q vs MAX H / MIN L across previous block's Q1..Q5
 // - Auto-detects pair from chart symbol; supports manual override
 // - Default FX/metals symbols use FOREXCOM source
 
@@ -109,11 +109,27 @@ var float q3bH = na, var float q3bL = na
 var float q4bH = na, var float q4bL = na
 var float q5bH = na, var float q5bL = na
 
-// Cross-block: previous block's Q5
+// Cross-block: previous block's quarters (all 5 of last week)
+var float pv1aH = na, var float pv1aL = na, var int pv1b = na
+var float pv2aH = na, var float pv2aL = na, var int pv2b = na
+var float pv3aH = na, var float pv3aL = na, var int pv3b = na
+var float pv4aH = na, var float pv4aL = na, var int pv4b = na
 var float pv5aH = na, var float pv5aL = na, var int pv5b = na
+var float pv1bH = na, var float pv1bL = na
+var float pv2bH = na, var float pv2bL = na
+var float pv3bH = na, var float pv3bL = na
+var float pv4bH = na, var float pv4bL = na
 var float pv5bH = na, var float pv5bL = na
 
 if isD and newBlock
+    pv1aH := q1aH, pv1aL := q1aL, pv1b := q1b
+    pv1bH := q1bH, pv1bL := q1bL
+    pv2aH := q2aH, pv2aL := q2aL, pv2b := q2b
+    pv2bH := q2bH, pv2bL := q2bL
+    pv3aH := q3aH, pv3aL := q3aL, pv3b := q3b
+    pv3bH := q3bH, pv3bL := q3bL
+    pv4aH := q4aH, pv4aL := q4aL, pv4b := q4b
+    pv4bH := q4bH, pv4bL := q4bL
     pv5aH := q5aH, pv5aL := q5aL, pv5b := q5b
     pv5bH := q5bH, pv5bL := q5bL
     q1aH := na, q1aL := na, q1b := na
@@ -199,6 +215,68 @@ if isD and blockOn and q >= 2
             pLowB := q4bL
 
 
+// ─── PREV BLOCK MAX/MIN (relaxed across pv1..pv5) ────────────────────────────
+float pvHighA = na, float pvHighB = na
+int   pvHBar  = na
+float pvLowA  = na, float pvLowB  = na
+int   pvLBar  = na
+
+if isD and blockOn
+    if not na(pv1aH)
+        pvHighA := pv1aH
+        pvHBar  := pv1b
+        pvLowA  := pv1aL
+        pvLBar  := pv1b
+    if not na(pv1bH)
+        pvHighB := pv1bH
+    if not na(pv1bL)
+        pvLowB := pv1bL
+
+    if not na(pv2aH) and (na(pvHighA) or pv2aH > pvHighA)
+        pvHighA := pv2aH
+        pvHBar  := pv2b
+    if not na(pv2bH) and (na(pvHighB) or pv2bH > pvHighB)
+        pvHighB := pv2bH
+    if not na(pv2aL) and (na(pvLowA) or pv2aL < pvLowA)
+        pvLowA := pv2aL
+        pvLBar := pv2b
+    if not na(pv2bL) and (na(pvLowB) or pv2bL < pvLowB)
+        pvLowB := pv2bL
+
+    if not na(pv3aH) and (na(pvHighA) or pv3aH > pvHighA)
+        pvHighA := pv3aH
+        pvHBar  := pv3b
+    if not na(pv3bH) and (na(pvHighB) or pv3bH > pvHighB)
+        pvHighB := pv3bH
+    if not na(pv3aL) and (na(pvLowA) or pv3aL < pvLowA)
+        pvLowA := pv3aL
+        pvLBar := pv3b
+    if not na(pv3bL) and (na(pvLowB) or pv3bL < pvLowB)
+        pvLowB := pv3bL
+
+    if not na(pv4aH) and (na(pvHighA) or pv4aH > pvHighA)
+        pvHighA := pv4aH
+        pvHBar  := pv4b
+    if not na(pv4bH) and (na(pvHighB) or pv4bH > pvHighB)
+        pvHighB := pv4bH
+    if not na(pv4aL) and (na(pvLowA) or pv4aL < pvLowA)
+        pvLowA := pv4aL
+        pvLBar := pv4b
+    if not na(pv4bL) and (na(pvLowB) or pv4bL < pvLowB)
+        pvLowB := pv4bL
+
+    if not na(pv5aH) and (na(pvHighA) or pv5aH > pvHighA)
+        pvHighA := pv5aH
+        pvHBar  := pv5b
+    if not na(pv5bH) and (na(pvHighB) or pv5bH > pvHighB)
+        pvHighB := pv5bH
+    if not na(pv5aL) and (na(pvLowA) or pv5aL < pvLowA)
+        pvLowA := pv5aL
+        pvLBar := pv5b
+    if not na(pv5bL) and (na(pvLowB) or pv5bL < pvLowB)
+        pvLowB := pv5bL
+
+
 // ─── SMT DETECTION (within block, q >= 2) ────────────────────────────────────
 bool bear = false
 bool bull = false
@@ -209,13 +287,14 @@ if isD and blockOn and q >= 2 and not na(pLowA) and not na(pLowB)
     if (aL < pLowA and not (bL < pLowB)) or (bL < pLowB and not (aL < pLowA))
         bull := true
 
-// ─── CROSS-BLOCK SMT (Q1 vs prev Q5) ─────────────────────────────────────────
+// ─── CROSS-BLOCK SMT (any current Q vs prev block's max H / min L) ──────────
 bool crossBear = false
 bool crossBull = false
-if isD and blockOn and q == 1 and not na(pv5aH) and not na(pv5bH)
-    if (aH > pv5aH and not (bH > pv5bH)) or (bH > pv5bH and not (aH > pv5aH))
+if isD and blockOn and not na(pvHighA) and not na(pvHighB)
+    if (aH > pvHighA and not (bH > pvHighB)) or (bH > pvHighB and not (aH > pvHighA))
         crossBear := true
-    if (aL < pv5aL and not (bL < pv5bL)) or (bL < pv5bL and not (aL < pv5aL))
+if isD and blockOn and not na(pvLowA) and not na(pvLowB)
+    if (aL < pvLowA and not (bL < pvLowB)) or (bL < pvLowB and not (aL < pvLowA))
         crossBull := true
 
 // ─── DRAW SMT LINES (at bar close) ───────────────────────────────────────────
@@ -231,15 +310,15 @@ if bull and not na(pLBar) and inDisplay and barstate.isconfirmed
     if showSmtLabel
         label.new(bar_index, aL, qTagBlock, style=label.style_none, textcolor=bullLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
 
-if crossBear and not na(pv5b) and inDisplay and barstate.isconfirmed
-    line.new(pv5b, pv5aH, bar_index, aH, color=bearLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
+if crossBear and not na(pvHBar) and inDisplay and barstate.isconfirmed
+    line.new(pvHBar, pvHighA, bar_index, aH, color=bearLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
     if showSmtLabel
-        label.new(bar_index, aH, "Q1*", style=label.style_none, textcolor=bearLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
+        label.new(bar_index, aH, qTagBlock + "*", style=label.style_none, textcolor=bearLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
 
-if crossBull and not na(pv5b) and inDisplay and barstate.isconfirmed
-    line.new(pv5b, pv5aL, bar_index, aL, color=bullLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
+if crossBull and not na(pvLBar) and inDisplay and barstate.isconfirmed
+    line.new(pvLBar, pvLowA, bar_index, aL, color=bullLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
     if showSmtLabel
-        label.new(bar_index, aL, "Q1*", style=label.style_none, textcolor=bullLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
+        label.new(bar_index, aL, qTagBlock + "*", style=label.style_none, textcolor=bullLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
 
 
 // ─── QUARTER LABELS PER CANDLE ───────────────────────────────────────────────
