@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SCS-MTF — LTF Label Rendering Update</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #0a0e14;
+    color: #d4dae0;
+    padding: 20px;
+  }
+  header { margin-bottom: 18px; }
+  h1 { color: #ffcc00; font-size: 22px; margin-bottom: 6px; }
+  .subtitle { color: #8a929c; font-size: 13px; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+  .panel {
+    background: #0d1218;
+    border: 1px solid #1f2630;
+    border-radius: 6px;
+    padding: 14px;
+  }
+  .panel.full { grid-column: 1 / -1; }
+  .panel h2 { color: #ffffff; font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .panel .desc { color: #8a929c; font-size: 12px; margin-bottom: 10px; }
+  canvas { display: block; width: 100%; height: 240px; background: #0d1218; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11px; color: #aaa; margin-top: 10px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { display: inline-block; width: 14px; height: 2px; }
+  .lvl  i { background: #ffcc00; }
+  .c2   i { background: #ff1744; }
+  .c3   i { background: #ff9100; }
+  .box  i { background: rgba(33, 150, 243, 0.5); }
+  .open i { background: transparent; height: 12px; width: 1px; border-left: 1px dotted #ffcc00; }
+  .checklist { list-style: none; padding-left: 0; font-size: 12px; line-height: 1.8; color: #c0c8d2; }
+  .checklist li::before { content: "\2713  "; color: #00e676; font-weight: bold; }
+  .strikelist li::before { content: "\2717  "; color: #ff1744; font-weight: bold; }
+  @media (max-width: 820px) { .grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+
+<header>
+  <h1>SCS-MTF &mdash; LTF Label Rendering Update</h1>
+  <p class="subtitle">
+    On the HTF chart, the C2/C3 horizontal closure lines stay unchanged. On the aligned LTF and Middle TF charts, the horizontal lines are removed; instead, a small text label is placed at the swept reference level, just below (or above) the equilibrium box. Detection logic is unchanged &mdash; no intra-candle CISD added.
+  </p>
+</header>
+
+<main class="grid">
+
+  <section class="panel full">
+    <h2>Concept &mdash; HTF horizontal line vs aligned LTF text label</h2>
+    <p class="desc">Same C2 bull reversal setup, two views. HTF (Daily) keeps the horizontal closure line. Aligned LTF (1H) drops the line; instead the equilibrium box stays and a small text label "HTF(Daily) C2 Reversal" is placed at the swept level.</p>
+    <canvas id="cConcept" style="height: 280px;"></canvas>
+  </section>
+
+  <section class="panel">
+    <h2>C2 Bull Reversal &mdash; HTF (Daily)</h2>
+    <p class="desc">C1 wicks below C2's low and closes back above. Horizontal red line at C2's low.</p>
+    <canvas id="cC2Htf"></canvas>
+    <div class="legend">
+      <span class="c2"><i></i>C2 closure line (htfL2)</span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>C2 Bull Reversal &mdash; Aligned LTF (1H)</h2>
+    <p class="desc">Same setup on aligned LTF. NO horizontal line. Text label at the swept level. Equilibrium box and HTF opening line stay.</p>
+    <canvas id="cC2Ltf"></canvas>
+    <div class="legend">
+      <span class="c2"><i></i>C2 ref level (label only)</span>
+      <span class="box"><i></i>Equilibrium box</span>
+      <span class="open"><i></i>HTF opening line</span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>C3 Bull Reversal &mdash; HTF (Daily)</h2>
+    <p class="desc">C2 took below C3's low and continued (closed below). C1 then wicks deeper and closes back above C3's low. Horizontal orange line at C3's low.</p>
+    <canvas id="cC3Htf"></canvas>
+    <div class="legend">
+      <span class="c3"><i></i>C3 closure line (htfL3)</span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>C3 Bull Reversal &mdash; Aligned LTF (1H)</h2>
+    <p class="desc">Same C3 setup on aligned LTF. NO horizontal line. Text label "HTF(Daily) C3 Reversal" at the swept C3 level.</p>
+    <canvas id="cC3Ltf"></canvas>
+    <div class="legend">
+      <span class="c3"><i></i>C3 ref level (label only)</span>
+      <span class="box"><i></i>Equilibrium box</span>
+      <span class="open"><i></i>HTF opening line</span>
+    </div>
+  </section>
+
+  <section class="panel full">
+    <h2>What stays / What changes</h2>
+    <ul class="checklist">
+      <li>HTF chart: C2 and C3 horizontal closure lines unchanged</li>
+      <li>Equilibrium box on aligned LTF / Middle TF: unchanged</li>
+      <li>HTF vertical opening line on aligned LTF: unchanged</li>
+      <li>Detection logic: unchanged &mdash; runs once at the HTF bar boundary</li>
+      <li>NO intra-candle CISD added</li>
+    </ul>
+    <ul class="checklist strikelist" style="margin-top: 10px;">
+      <li>Aligned LTF / Middle TF: NO horizontal C2 closure line (replaced by text label)</li>
+      <li>Aligned LTF / Middle TF: NO horizontal C3 closure line (replaced by text label)</li>
+    </ul>
+  </section>
+
+</main>
+
+
+<script>
+"use strict";
+
+const COL = {
+  bg:     "#0d1218",
+  axis:   "#1f2630",
+  c2:     "#ff1744",
+  c3:     "#ff9100",
+  level:  "#ffcc00",
+  text:   "#d4dae0",
+  dim:    "#6a7480",
+  cUp:    "#26a69a",
+  cDn:    "#ef5350",
+  boxBg:  "rgba(33, 150, 243, 0.18)",
+  boxBd:  "rgba(33, 150, 243, 0.55)",
+  open:   "#ffcc00",
+};
+
+function setup(id) {
+  const c = document.getElementById(id);
+  const dpr = window.devicePixelRatio || 1;
+  const rect = c.getBoundingClientRect();
+  c.width  = Math.round(rect.width  * dpr);
+  c.height = Math.round(rect.height * dpr);
+  const ctx = c.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, w: rect.width, h: rect.height };
+}
+
+function ys(price, y1, y2) { return y2 - price * (y2 - y1); }
+
+function candle(ctx, x, w, oy, hy, ly, cy, up, dn) {
+  const isUp = cy <= oy;
+  const c = isUp ? up : dn;
+  ctx.strokeStyle = c;
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(x, hy);
+  ctx.lineTo(x, ly);
+  ctx.stroke();
+  const top = Math.min(oy, cy);
+  const ht  = Math.max(Math.abs(cy - oy), 1);
+  ctx.fillStyle = c;
+  ctx.fillRect(Math.round(x - w / 2), Math.round(top), Math.round(w), Math.round(ht));
+}
+
+function dotted(ctx, x1, y1, x2, y2, color, width) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width || 1;
+  ctx.setLineDash([2, 3]);
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function txt(ctx, x, y, t, color, align, size, weight) {
+  ctx.fillStyle = color;
+  ctx.font = (weight || "normal") + " " + (size || 10) + "px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+  ctx.textAlign = align || "center";
+  ctx.textBaseline = "alphabetic";
+  ctx.fillText(t, x, y);
+}
+
+function rect(ctx, x1, y1, x2, y2, fill, border, borderW) {
+  ctx.fillStyle = fill;
+  ctx.fillRect(x1, y1, x2 - x1, y2 - y1);
+  if (borderW > 0) {
+    ctx.strokeStyle = border;
+    ctx.lineWidth = borderW;
+    ctx.strokeRect(x1 + 0.5, y1 + 0.5, x2 - x1 - 1, y2 - y1 - 1);
+  }
+}
+
+
+// ─── Render HTF panel (daily candles + horizontal closure line) ──────────────
+function renderHtf(opts) {
+  const { ctx, w, h } = setup(opts.id);
+  ctx.fillStyle = COL.bg;
+  ctx.fillRect(0, 0, w, h);
+
+  const padL = 50, padR = 80, padT = 22, padB = 24;
+  const y1 = padT, y2 = h - padB;
+  const n = opts.candles.length;
+  const xStep = (w - padL - padR) / (n + 1);
+  const cw = Math.min(xStep * 0.5, 24);
+
+  txt(ctx, 6, y1 + 12, opts.label || "HTF", COL.dim, "left", 11, "bold");
+  if (opts.subtitle) txt(ctx, w - padR, y1 + 12, opts.subtitle, COL.dim, "right", 9);
+
+  for (let i = 0; i < n; i++) {
+    const x = padL + (i + 1) * xStep;
+    const c = opts.candles[i];
+    candle(ctx, x, cw,
+      ys(c.o, y1, y2), ys(c.h, y1, y2),
+      ys(c.l, y1, y2), ys(c.c, y1, y2),
+      COL.cUp, COL.cDn);
+    txt(ctx, x, h - 6, c.tag, COL.dim, "center", 9);
+  }
+
+  if (opts.closureY != null) {
+    const startX = padL + (opts.closureFromIdx + 1) * xStep;
+    const endX = w - padR + 50;
+    const y = ys(opts.closureY, y1, y2);
+    ctx.strokeStyle = opts.closureColor;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(startX, y);
+    ctx.lineTo(endX, y);
+    ctx.stroke();
+    if (opts.closureLabel) {
+      txt(ctx, endX + 4, y + 3, opts.closureLabel, opts.closureColor, "left", 10, "bold");
+    }
+  }
+}
+
+// ─── Render LTF panel (LTF bars + eq box + open line + label, NO line) ──────
+function renderLtf(opts) {
+  const { ctx, w, h } = setup(opts.id);
+  ctx.fillStyle = COL.bg;
+  ctx.fillRect(0, 0, w, h);
+
+  const padL = 50, padR = 60, padT = 22, padB = 24;
+  const y1 = padT, y2 = h - padB;
+  const n = opts.bars.length;
+  const xStep = (w - padL - padR) / (n + 1);
+  const cw = Math.min(xStep * 0.55, 12);
+
+  txt(ctx, 6, y1 + 12, opts.label || "LTF", COL.dim, "left", 11, "bold");
+  if (opts.subtitle) txt(ctx, w - padR, y1 + 12, opts.subtitle, COL.dim, "right", 9);
+
+  // Equilibrium box drawn first so candles overlay it
+  if (opts.eqBox) {
+    const eb = opts.eqBox;
+    const xL = padL + (eb.leftIdx + 0.5) * xStep;
+    const xR = padL + (eb.rightIdx + 1.5) * xStep;
+    const yTop = ys(eb.top, y1, y2);
+    const yBot = ys(eb.bottom, y1, y2);
+    rect(ctx, xL, yTop, xR, yBot, COL.boxBg, COL.boxBd, 1);
+  }
+
+  // HTF opening vertical line
+  if (opts.openIdx != null) {
+    const x = padL + (opts.openIdx + 1) * xStep;
+    dotted(ctx, x, y1 - 2, x, y2 + 2, COL.open, 1);
+    txt(ctx, x, y1 - 4, "HTF open", COL.dim, "center", 9);
+  }
+
+  // Bars
+  for (let i = 0; i < n; i++) {
+    const x = padL + (i + 1) * xStep;
+    const b = opts.bars[i];
+    candle(ctx, x, cw,
+      ys(b.o, y1, y2), ys(b.h, y1, y2),
+      ys(b.l, y1, y2), ys(b.c, y1, y2),
+      COL.cUp, COL.cDn);
+  }
+
+  if (opts.dayLabels) {
+    for (const d of opts.dayLabels) {
+      const x = padL + (d.idx + 1) * xStep;
+      txt(ctx, x, h - 6, d.text, COL.dim, "center", 9);
+    }
+  }
+
+  // Text label at swept reference level (NO line)
+  if (opts.refLabel) {
+    const rl = opts.refLabel;
+    const x = padL + (rl.idx + 1) * xStep;
+    const y = ys(rl.y, y1, y2);
+    ctx.fillStyle = rl.color;
+    ctx.beginPath();
+    ctx.arc(x, y, 2.8, 0, Math.PI * 2);
+    ctx.fill();
+    txt(ctx, x + 6, y + 3, rl.text, rl.color, "left", 11, "bold");
+  }
+}
+
+
+// ─── LTF synthetic data (C2 Bull Reversal) ──────────────────────────────────
+// 12 bars for C1's day (drift from ~0.5 down to 0.35 and recovery above 0.4)
+// 6 bars for the new HTF day (pullback into eq zone, then recovery)
+function makeLtfBarsBullC2() {
+  return [
+    { o: 0.50, h: 0.51, l: 0.48, c: 0.49 },
+    { o: 0.49, h: 0.50, l: 0.46, c: 0.47 },
+    { o: 0.47, h: 0.48, l: 0.44, c: 0.45 },
+    { o: 0.45, h: 0.46, l: 0.42, c: 0.43 },
+    { o: 0.43, h: 0.44, l: 0.40, c: 0.41 },
+    { o: 0.41, h: 0.42, l: 0.38, c: 0.39 }, // touched below 0.4
+    { o: 0.39, h: 0.41, l: 0.36, c: 0.37 },
+    { o: 0.37, h: 0.40, l: 0.35, c: 0.39 }, // low of C1
+    { o: 0.39, h: 0.43, l: 0.39, c: 0.42 }, // recovery above 0.4
+    { o: 0.42, h: 0.46, l: 0.42, c: 0.45 },
+    { o: 0.45, h: 0.48, l: 0.44, c: 0.47 },
+    { o: 0.47, h: 0.49, l: 0.46, c: 0.48 }, // close of C1
+    // New HTF day starts here (idx 12)
+    { o: 0.48, h: 0.49, l: 0.45, c: 0.46 },
+    { o: 0.46, h: 0.48, l: 0.44, c: 0.45 },
+    { o: 0.45, h: 0.47, l: 0.43, c: 0.44 },
+    { o: 0.44, h: 0.46, l: 0.43, c: 0.45 },
+    { o: 0.45, h: 0.50, l: 0.45, c: 0.49 },
+    { o: 0.49, h: 0.52, l: 0.48, c: 0.51 },
+  ];
+}
+
+// ─── LTF synthetic data (C3 Bull Reversal) ──────────────────────────────────
+// 12 bars for C1's day (deeper sweep below C3 ref at 0.4 down to 0.3, recovery)
+// 6 bars for the new HTF day
+function makeLtfBarsBullC3() {
+  return [
+    { o: 0.38, h: 0.40, l: 0.36, c: 0.37 },
+    { o: 0.37, h: 0.39, l: 0.35, c: 0.36 },
+    { o: 0.36, h: 0.38, l: 0.33, c: 0.34 },
+    { o: 0.34, h: 0.36, l: 0.32, c: 0.33 },
+    { o: 0.33, h: 0.34, l: 0.30, c: 0.31 },
+    { o: 0.31, h: 0.32, l: 0.30, c: 0.31 }, // low of C1 at 0.30
+    { o: 0.31, h: 0.34, l: 0.31, c: 0.33 },
+    { o: 0.33, h: 0.36, l: 0.33, c: 0.35 },
+    { o: 0.35, h: 0.40, l: 0.35, c: 0.39 },
+    { o: 0.39, h: 0.42, l: 0.39, c: 0.41 }, // back above 0.40
+    { o: 0.41, h: 0.44, l: 0.40, c: 0.43 },
+    { o: 0.43, h: 0.46, l: 0.42, c: 0.45 }, // close of C1 at 0.45
+    // New HTF day starts here (idx 12)
+    { o: 0.45, h: 0.46, l: 0.40, c: 0.42 },
+    { o: 0.42, h: 0.44, l: 0.39, c: 0.40 },
+    { o: 0.40, h: 0.42, l: 0.375, c: 0.39 }, // touched eqMid 0.375
+    { o: 0.39, h: 0.42, l: 0.39, c: 0.41 },
+    { o: 0.41, h: 0.45, l: 0.41, c: 0.44 },
+    { o: 0.44, h: 0.48, l: 0.44, c: 0.47 },
+  ];
+}
+
+
+// ─── Concept panel: HTF (with line) on left, LTF (with label) on right ──────
+function renderConcept() {
+  const { ctx, w, h } = setup("cConcept");
+  ctx.fillStyle = COL.bg;
+  ctx.fillRect(0, 0, w, h);
+
+  const padT = 24, padB = 28, padL = 16, padR = 16;
+  const gap = 36;
+  const halfW = (w - padL - padR - gap) / 2;
+  const y1 = padT, y2 = h - padB;
+
+  // Left half: HTF (Daily) — 4 candles + closure line
+  const htfX0 = padL, htfX1 = htfX0 + halfW;
+  txt(ctx, htfX0 + halfW / 2, y1 - 6, "HTF (Daily) — closure line stays", "#ffffff", "center", 12, "bold");
+  const htfCandles = [
+    { o: 0.55, h: 0.60, l: 0.52, c: 0.58, tag: "C3" },
+    { o: 0.58, h: 0.60, l: 0.40, c: 0.45, tag: "C2 (ref)" },
+    { o: 0.45, h: 0.50, l: 0.35, c: 0.48, tag: "C1 (rev)" },
+    { o: 0.48, h: 0.55, l: 0.46, c: 0.53, tag: "New" },
+  ];
+  const htfN = htfCandles.length;
+  const htfStep = halfW / (htfN + 1);
+  const htfCw = Math.min(htfStep * 0.5, 22);
+  for (let i = 0; i < htfN; i++) {
+    const x = htfX0 + (i + 1) * htfStep;
+    const c = htfCandles[i];
+    candle(ctx, x, htfCw,
+      ys(c.o, y1, y2), ys(c.h, y1, y2),
+      ys(c.l, y1, y2), ys(c.c, y1, y2),
+      COL.cUp, COL.cDn);
+    txt(ctx, x, h - 8, c.tag, COL.dim, "center", 9);
+  }
+  // Closure line at C2's low (0.4) extending right
+  const c2X = htfX0 + 2 * htfStep;
+  const lineY = ys(0.40, y1, y2);
+  ctx.strokeStyle = COL.c2;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(c2X, lineY);
+  ctx.lineTo(htfX1, lineY);
+  ctx.stroke();
+  txt(ctx, htfX1, lineY - 4, "C2 closure", COL.c2, "right", 9, "bold");
+
+  // Divider
+  const arrowX = htfX1 + gap / 2;
+  txt(ctx, arrowX, (y1 + y2) / 2, "\u2192", COL.level, "center", 22, "bold");
+  txt(ctx, arrowX, (y1 + y2) / 2 + 16, "1H", COL.dim, "center", 9);
+
+  // Right half: LTF (1H) — bars + eq box + label, NO line
+  const ltfX0 = htfX1 + gap, ltfX1 = ltfX0 + halfW;
+  txt(ctx, ltfX0 + halfW / 2, y1 - 6, "Aligned LTF (1H) — text label, NO line", "#ffffff", "center", 12, "bold");
+  const ltfBars = makeLtfBarsBullC2();
+  const ltfN = ltfBars.length;
+  const ltfStep = halfW / (ltfN + 1);
+  const ltfCw = Math.min(ltfStep * 0.55, 9);
+
+  // Equilibrium box (idx 12 to 17, extending to right edge)
+  const ebL = ltfX0 + (12 + 0.5) * ltfStep;
+  const ebR = ltfX1 - 4;
+  const ebTop = ys(0.48, y1, y2);
+  const ebBot = ys(0.415, y1, y2);
+  rect(ctx, ebL, ebTop, ebR, ebBot, COL.boxBg, COL.boxBd, 1);
+
+  // HTF opening line at boundary (idx 12)
+  const openX = ltfX0 + (12 + 1) * ltfStep;
+  dotted(ctx, openX, y1 - 2, openX, y2 + 2, COL.open, 1);
+  txt(ctx, openX, y1 - 4, "HTF open", COL.dim, "center", 9);
+
+  // LTF bars
+  for (let i = 0; i < ltfN; i++) {
+    const x = ltfX0 + (i + 1) * ltfStep;
+    const b = ltfBars[i];
+    candle(ctx, x, ltfCw,
+      ys(b.o, y1, y2), ys(b.h, y1, y2),
+      ys(b.l, y1, y2), ys(b.c, y1, y2),
+      COL.cUp, COL.cDn);
+  }
+
+  // Text label at swept reference (0.4) — NO horizontal line
+  const lblX = ltfX0 + (14 + 1) * ltfStep;
+  const lblY = ys(0.40, y1, y2);
+  ctx.fillStyle = COL.c2;
+  ctx.beginPath();
+  ctx.arc(lblX, lblY, 2.8, 0, Math.PI * 2);
+  ctx.fill();
+  txt(ctx, lblX + 6, lblY + 3, "HTF(Daily) C2 Reversal", COL.c2, "left", 10, "bold");
+}
+
+
+// ─── Individual panels ──────────────────────────────────────────────────────
+
+function drawC2Htf() {
+  renderHtf({
+    id: "cC2Htf",
+    label: "Daily",
+    candles: [
+      { o: 0.52, h: 0.58, l: 0.50, c: 0.56, tag: "C4" },
+      { o: 0.56, h: 0.60, l: 0.52, c: 0.58, tag: "C3" },
+      { o: 0.58, h: 0.60, l: 0.40, c: 0.45, tag: "C2 (ref)" },
+      { o: 0.45, h: 0.50, l: 0.35, c: 0.48, tag: "C1 (rev)" },
+      { o: 0.48, h: 0.55, l: 0.46, c: 0.53, tag: "New" },
+    ],
+    closureY: 0.40,
+    closureFromIdx: 2,
+    closureColor: COL.c2,
+    closureLabel: "C2 closure",
+    subtitle: "Bull C1 sweeps C2 low at 0.40, closes back above",
+  });
+}
+
+function drawC2Ltf() {
+  renderLtf({
+    id: "cC2Ltf",
+    label: "1H aligned",
+    bars: makeLtfBarsBullC2(),
+    eqBox: { top: 0.48, bottom: 0.415, leftIdx: 12, rightIdx: 17 },
+    openIdx: 12,
+    refLabel: { y: 0.40, text: "HTF(Daily) C2 Reversal", color: COL.c2, idx: 14 },
+    dayLabels: [
+      { idx: 5,  text: "C1 day" },
+      { idx: 15, text: "New HTF day" },
+    ],
+    subtitle: "Same setup. NO closure line. Text label at swept level.",
+  });
+}
+
+function drawC3Htf() {
+  renderHtf({
+    id: "cC3Htf",
+    label: "Daily",
+    candles: [
+      { o: 0.55, h: 0.60, l: 0.52, c: 0.58, tag: "C4" },
+      { o: 0.55, h: 0.55, l: 0.40, c: 0.45, tag: "C3 (ref)" },
+      { o: 0.45, h: 0.45, l: 0.35, c: 0.38, tag: "C2 (cont)" },
+      { o: 0.38, h: 0.45, l: 0.30, c: 0.45, tag: "C1 (rev)" },
+      { o: 0.45, h: 0.50, l: 0.42, c: 0.48, tag: "New" },
+    ],
+    closureY: 0.40,
+    closureFromIdx: 1,
+    closureColor: COL.c3,
+    closureLabel: "C3 closure",
+    subtitle: "C2 continuation, then C1 sweeps deeper and closes back above",
+  });
+}
+
+function drawC3Ltf() {
+  renderLtf({
+    id: "cC3Ltf",
+    label: "1H aligned",
+    bars: makeLtfBarsBullC3(),
+    eqBox: { top: 0.45, bottom: 0.375, leftIdx: 12, rightIdx: 17 },
+    openIdx: 12,
+    refLabel: { y: 0.40, text: "HTF(Daily) C3 Reversal", color: COL.c3, idx: 14 },
+    dayLabels: [
+      { idx: 5,  text: "C1 day (deeper sweep)" },
+      { idx: 15, text: "New HTF day" },
+    ],
+    subtitle: "Same setup. NO closure line. Text label at swept C3 level.",
+  });
+}
+
+function drawAll() {
+  renderConcept();
+  drawC2Htf();
+  drawC2Ltf();
+  drawC3Htf();
+  drawC3Ltf();
+}
+
+window.addEventListener("load", drawAll);
+window.addEventListener("resize", () => {
+  clearTimeout(window.__scsResize);
+  window.__scsResize = setTimeout(drawAll, 100);
+});
+</script>
+
+</body>
+</html>
