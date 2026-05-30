@@ -128,10 +128,10 @@ bearFire = revBear1 or revBear2
 labelText1 = "HTF(" + htfStr + ") C2 Reversal"
 labelText2 = "HTF(" + htfStr + ") C3 Reversal"
 // HTF C1 = the just-closed HTF candle (the reversal candle)
-c1StartBar = bar_index - barsPerHtf                        // first LTF bar of HTF C1
-c1EndBar   = bar_index - 1                                 // last  LTF bar of HTF C1
-c1MidBar   = bar_index - math.floor(barsPerHtf / 2)        // middle LTF bar of HTF C1
-bodyMidY   = na(htfO1) or na(htfC1) ? na : (htfO1 + htfC1) / 2.0  // midpoint of HTF C1 body
+c1EndBar = bar_index - 1                                   // last LTF bar of HTF C1
+c1MidBar = bar_index - math.floor(barsPerHtf / 2)          // middle LTF bar of HTF C1
+bodyTop  = na(htfO1) or na(htfC1) ? na : math.max(htfO1, htfC1)  // top of HTF C1 body
+bodyBot  = na(htfO1) or na(htfC1) ? na : math.min(htfO1, htfC1)  // bottom of HTF C1 body
 
 // HTF chart: horizontal closure lines
 if showLine1 and isHtfChart and inDisplay
@@ -147,27 +147,75 @@ if showLine2 and isHtfChart and inDisplay
         line.new(bar_index - barsPerHtf * 3, htfH3, bar_index + barsPerHtf * line2Extra, htfH3, color = line2Color, width = line2Width, style = lineStyleFn(line2StyleStr), xloc = xloc.bar_index)
 
 
-// Aligned LTF / Middle TF: LTF CISD (short closure line within HTF C1's LTF span)
-//                        + text label within HTF C1's open-to-close body
-if showLine1 and (isLtfChart or isMidChart) and line1OnLtf and inDisplay
-    if revBull1
-        line.new(c1StartBar, htfL2, c1EndBar, htfL2, color = line1Color, width = line1Width, style = lineStyleFn(line1StyleStr), xloc = xloc.bar_index)
-        if not na(bodyMidY)
-            label.new(c1MidBar, bodyMidY, labelText1, color = color.new(line1Color, 100), textcolor = line1Color, style = label.style_none, size = size.small, textalign = text.align_center, xloc = xloc.bar_index)
-    if revBear1
-        line.new(c1StartBar, htfH2, c1EndBar, htfH2, color = line1Color, width = line1Width, style = lineStyleFn(line1StyleStr), xloc = xloc.bar_index)
-        if not na(bodyMidY)
-            label.new(c1MidBar, bodyMidY, labelText1, color = color.new(line1Color, 100), textcolor = line1Color, style = label.style_none, size = size.small, textalign = text.align_center, xloc = xloc.bar_index)
+// =====================================================================
+// Aligned LTF only: LTF CISD detection + render (NOT Middle TF, NOT HTF)
+// A valid C2/C3 reversal requires BOTH:
+//   1) HTF closure type (revBull1/revBear1/revBull2/revBear2 above)
+//   2) Aligned LTF CISD: an LTF bar within HTF C1 that closed back
+//      through the swept reference (htfL2/H2 for C2, htfL3/H3 for C3)
+//      after at least one LTF bar swept that level.
+// LTF CISD line: drawn at the OPEN of the confirming LTF bar, from that
+//                bar to the right edge of HTF C1's LTF span.
+// Text label:    body top (bear) or body bottom (bull), centered on
+//                HTF C1's middle LTF bar.
+// =====================================================================
 
-if showLine2 and (isLtfChart or isMidChart) and line2OnLtf and inDisplay
-    if revBull2
-        line.new(c1StartBar, htfL3, c1EndBar, htfL3, color = line2Color, width = line2Width, style = lineStyleFn(line2StyleStr), xloc = xloc.bar_index)
-        if not na(bodyMidY)
-            label.new(c1MidBar, bodyMidY, labelText2, color = color.new(line2Color, 100), textcolor = line2Color, style = label.style_none, size = size.small, textalign = text.align_center, xloc = xloc.bar_index)
-    if revBear2
-        line.new(c1StartBar, htfH3, c1EndBar, htfH3, color = line2Color, width = line2Width, style = lineStyleFn(line2StyleStr), xloc = xloc.bar_index)
-        if not na(bodyMidY)
-            label.new(c1MidBar, bodyMidY, labelText2, color = color.new(line2Color, 100), textcolor = line2Color, style = label.style_none, size = size.small, textalign = text.align_center, xloc = xloc.bar_index)
+// C2 LTF CISD detection
+int   c2CisdBar   = na
+float c2CisdLevel = na
+if isLtfChart and (revBull1 or revBear1)
+    bool  c2Bull   = revBull1
+    float c2RefLvl = c2Bull ? htfL2 : htfH2
+    bool  c2Swept  = false
+    for i = barsPerHtf to 1
+        if c2Bull
+            if low[i] < c2RefLvl
+                c2Swept := true
+            if c2Swept and close[i] > c2RefLvl and na(c2CisdBar)
+                c2CisdBar   := bar_index - i
+                c2CisdLevel := open[i]
+        else
+            if high[i] > c2RefLvl
+                c2Swept := true
+            if c2Swept and close[i] < c2RefLvl and na(c2CisdBar)
+                c2CisdBar   := bar_index - i
+                c2CisdLevel := open[i]
+
+// C3 LTF CISD detection
+int   c3CisdBar   = na
+float c3CisdLevel = na
+if isLtfChart and (revBull2 or revBear2)
+    bool  c3Bull   = revBull2
+    float c3RefLvl = c3Bull ? htfL3 : htfH3
+    bool  c3Swept  = false
+    for i = barsPerHtf to 1
+        if c3Bull
+            if low[i] < c3RefLvl
+                c3Swept := true
+            if c3Swept and close[i] > c3RefLvl and na(c3CisdBar)
+                c3CisdBar   := bar_index - i
+                c3CisdLevel := open[i]
+        else
+            if high[i] > c3RefLvl
+                c3Swept := true
+            if c3Swept and close[i] < c3RefLvl and na(c3CisdBar)
+                c3CisdBar   := bar_index - i
+                c3CisdLevel := open[i]
+
+// Draw LTF CISD line + text label (only if BOTH closure type AND LTF CISD)
+if showLine1 and isLtfChart and line1OnLtf and inDisplay and not na(c2CisdBar)
+    line.new(c2CisdBar, c2CisdLevel, c1EndBar, c2CisdLevel, color = line1Color, width = line1Width, style = lineStyleFn(line1StyleStr), xloc = xloc.bar_index)
+    if revBull1 and not na(bodyBot)
+        label.new(c1MidBar, bodyBot, labelText1, color = color.new(line1Color, 100), textcolor = line1Color, style = label.style_none, size = size.small, textalign = text.align_center, xloc = xloc.bar_index)
+    if revBear1 and not na(bodyTop)
+        label.new(c1MidBar, bodyTop, labelText1, color = color.new(line1Color, 100), textcolor = line1Color, style = label.style_none, size = size.small, textalign = text.align_center, xloc = xloc.bar_index)
+
+if showLine2 and isLtfChart and line2OnLtf and inDisplay and not na(c3CisdBar)
+    line.new(c3CisdBar, c3CisdLevel, c1EndBar, c3CisdLevel, color = line2Color, width = line2Width, style = lineStyleFn(line2StyleStr), xloc = xloc.bar_index)
+    if revBull2 and not na(bodyBot)
+        label.new(c1MidBar, bodyBot, labelText2, color = color.new(line2Color, 100), textcolor = line2Color, style = label.style_none, size = size.small, textalign = text.align_center, xloc = xloc.bar_index)
+    if revBear2 and not na(bodyTop)
+        label.new(c1MidBar, bodyTop, labelText2, color = color.new(line2Color, 100), textcolor = line2Color, style = label.style_none, size = size.small, textalign = text.align_center, xloc = xloc.bar_index)
 
 // =====================================================================
 // Equilibrium box  (Primary LTF AND Middle TF only — never on HTF)
