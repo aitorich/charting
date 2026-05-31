@@ -1,0 +1,128 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1350" width="1080" height="1350" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Arial, sans-serif">
+  <!-- Definitions -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0d1117"/>
+      <stop offset="100%" stop-color="#161b22"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#22d3ee"/>
+      <stop offset="100%" stop-color="#10b981"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+    <linearGradient id="cardGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1f2937"/>
+      <stop offset="100%" stop-color="#111827"/>
+    </linearGradient>
+    <filter id="soft" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur stdDeviation="6"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1080" height="1350" fill="url(#bg)"/>
+
+  <!-- Faint chart grid -->
+  <g stroke="#1f2937" stroke-width="1" opacity="0.6">
+    <line x1="0" y1="200" x2="1080" y2="200"/>
+    <line x1="0" y1="400" x2="1080" y2="400"/>
+    <line x1="0" y1="600" x2="1080" y2="600"/>
+    <line x1="0" y1="800" x2="1080" y2="800"/>
+    <line x1="0" y1="1000" x2="1080" y2="1000"/>
+    <line x1="0" y1="1200" x2="1080" y2="1200"/>
+    <line x1="270" y1="0" x2="270" y2="1350"/>
+    <line x1="540" y1="0" x2="540" y2="1350"/>
+    <line x1="810" y1="0" x2="810" y2="1350"/>
+  </g>
+
+  <!-- Decorative candles top-right -->
+  <g opacity="0.18">
+    <line x1="900" y1="60" x2="900" y2="180" stroke="#10b981" stroke-width="2"/>
+    <rect x="890" y="90" width="20" height="70" fill="#10b981"/>
+    <line x1="950" y1="80" x2="950" y2="200" stroke="#ef4444" stroke-width="2"/>
+    <rect x="940" y="110" width="20" height="60" fill="#ef4444"/>
+    <line x1="1000" y1="50" x2="1000" y2="170" stroke="#10b981" stroke-width="2"/>
+    <rect x="990" y="70" width="20" height="80" fill="#10b981"/>
+  </g>
+
+  <!-- Header -->
+  <g>
+    <text x="60" y="110" fill="#22d3ee" font-size="18" font-weight="700" letter-spacing="6">CHECKLIST</text>
+    <text x="60" y="170" fill="#f9fafb" font-size="56" font-weight="800" letter-spacing="-1">High Probability</text>
+    <text x="60" y="230" fill="#f9fafb" font-size="56" font-weight="800" letter-spacing="-1">
+      Trade <tspan fill="url(#accent)">Keypoints</tspan>
+    </text>
+    <line x1="60" y1="262" x2="180" y2="262" stroke="url(#accent)" stroke-width="4" stroke-linecap="round"/>
+  </g>
+
+  <!-- Keypoint cards -->
+  <!-- Card 1 -->
+  <g transform="translate(60, 300)">
+    <rect width="960" height="130" rx="16" fill="url(#cardGrad)" stroke="#22d3ee" stroke-opacity="0.25" stroke-width="1"/>
+    <circle cx="65" cy="65" r="36" fill="#0b1220" stroke="url(#accent)" stroke-width="2"/>
+    <text x="65" y="78" text-anchor="middle" fill="#22d3ee" font-size="34" font-weight="800">01</text>
+    <text x="130" y="55" fill="#f9fafb" font-size="22" font-weight="700">Swing Point Established</text>
+    <text x="130" y="90" fill="#9ca3af" font-size="18">A confirmed swing point in the</text>
+    <text x="130" y="113" fill="#9ca3af" font-size="18"><tspan fill="#22d3ee" font-weight="700">4HR chart</tspan> must be in place before entry.</text>
+  </g>
+
+  <!-- Card 2 -->
+  <g transform="translate(60, 450)">
+    <rect width="960" height="130" rx="16" fill="url(#cardGrad)" stroke="#22d3ee" stroke-opacity="0.25" stroke-width="1"/>
+    <circle cx="65" cy="65" r="36" fill="#0b1220" stroke="url(#accent)" stroke-width="2"/>
+    <text x="65" y="78" text-anchor="middle" fill="#22d3ee" font-size="34" font-weight="800">02</text>
+    <text x="130" y="55" fill="#f9fafb" font-size="22" font-weight="700">Opposite Candle Closure</text>
+    <text x="130" y="90" fill="#9ca3af" font-size="18">Direction / bias confirmation via opposite</text>
+    <text x="130" y="113" fill="#9ca3af" font-size="18">candle closure within the <tspan fill="#22d3ee" font-weight="700">first 3 candles</tspan>.</text>
+  </g>
+
+  <!-- Card 3 -->
+  <g transform="translate(60, 600)">
+    <rect width="960" height="130" rx="16" fill="url(#cardGrad)" stroke="#22d3ee" stroke-opacity="0.25" stroke-width="1"/>
+    <circle cx="65" cy="65" r="36" fill="#0b1220" stroke="url(#accent)" stroke-width="2"/>
+    <text x="65" y="78" text-anchor="middle" fill="#22d3ee" font-size="34" font-weight="800">03</text>
+    <text x="130" y="55" fill="#f9fafb" font-size="22" font-weight="700">SMT Between 4HR Quarters</text>
+    <text x="130" y="90" fill="#9ca3af" font-size="18">SMT must form across 4HR quarters within</text>
+    <text x="130" y="113" fill="#9ca3af" font-size="18">the <tspan fill="#22d3ee" font-weight="700">first 3 / 4 quarters</tspan> of the cycle.</text>
+  </g>
+
+  <!-- Card 4 — emphasized (gold) -->
+  <g transform="translate(60, 750)">
+    <rect width="960" height="130" rx="16" fill="url(#cardGrad)" stroke="url(#gold)" stroke-width="2"/>
+    <circle cx="65" cy="65" r="36" fill="#0b1220" stroke="url(#gold)" stroke-width="2"/>
+    <text x="65" y="78" text-anchor="middle" fill="#fbbf24" font-size="34" font-weight="800">04</text>
+    <text x="130" y="55" fill="#fde68a" font-size="22" font-weight="700">SMT + External Key Level</text>
+    <text x="130" y="90" fill="#d1d5db" font-size="18">When SMT forms with an external key level</text>
+    <text x="130" y="113" fill="#d1d5db" font-size="18">+ within quarters = <tspan fill="#fbbf24" font-weight="800">High Probability Setup</tspan>.</text>
+    <!-- Star badge -->
+    <g transform="translate(890, 30)">
+      <polygon points="20,0 25,15 40,15 28,24 33,40 20,30 7,40 12,24 0,15 15,15" fill="url(#gold)"/>
+    </g>
+  </g>
+
+  <!-- Card 5 -->
+  <g transform="translate(60, 900)">
+    <rect width="960" height="130" rx="16" fill="url(#cardGrad)" stroke="#22d3ee" stroke-opacity="0.25" stroke-width="1"/>
+    <circle cx="65" cy="65" r="36" fill="#0b1220" stroke="url(#accent)" stroke-width="2"/>
+    <text x="65" y="78" text-anchor="middle" fill="#22d3ee" font-size="34" font-weight="800">05</text>
+    <text x="130" y="55" fill="#f9fafb" font-size="22" font-weight="700">Always Trade C2 – C4</text>
+    <text x="130" y="90" fill="#9ca3af" font-size="18">Stick to the second through fourth candles —</text>
+    <text x="130" y="113" fill="#ef4444" font-size="18" font-weight="700">Never skip this rule.</text>
+  </g>
+
+  <!-- Footer banner -->
+  <g transform="translate(60, 1070)">
+    <rect width="960" height="180" rx="20" fill="#0b1220" stroke="url(#accent)" stroke-width="2"/>
+    <text x="480" y="65" text-anchor="middle" fill="#9ca3af" font-size="16" letter-spacing="4" font-weight="600">CORE PRINCIPLES</text>
+    <text x="480" y="115" text-anchor="middle" fill="#f9fafb" font-size="30" font-weight="800">
+      HTF Logic is always <tspan fill="#fbbf24">#1 Priority</tspan>
+    </text>
+    <text x="480" y="155" text-anchor="middle" fill="#22d3ee" font-size="22" font-weight="700" letter-spacing="3">TTFM ALWAYS</text>
+  </g>
+
+  <!-- Bottom signature -->
+  <text x="540" y="1300" text-anchor="middle" fill="#4b5563" font-size="13" letter-spacing="2">TRADE PLAN · QUICK REFERENCE</text>
+</svg>
