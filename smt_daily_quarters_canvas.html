@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SMT — 4HR Quarters within Daily Block</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #0a0e14;
+    color: #d4dae0;
+    padding: 20px;
+  }
+  header { margin-bottom: 18px; }
+  h1 { color: #ffcc00; font-size: 22px; margin-bottom: 6px; }
+  .subtitle { color: #8a929c; font-size: 13px; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+  .panel {
+    background: #0d1218;
+    border: 1px solid #1f2630;
+    border-radius: 6px;
+    padding: 14px;
+  }
+  .panel.full { grid-column: 1 / -1; }
+  .panel h2 { color: #ffffff; font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .panel .desc { color: #8a929c; font-size: 12px; margin-bottom: 10px; }
+  canvas { display: block; width: 100%; height: 240px; background: #0d1218; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11px; color: #aaa; margin-top: 10px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { display: inline-block; width: 14px; height: 2px; }
+  .bull i { background: #00e676; }
+  .bear i { background: #ff1744; }
+  .lvl  i { background: #ffcc00; }
+  .checklist { list-style: none; padding-left: 0; font-size: 12px; line-height: 1.8; color: #c0c8d2; }
+  .checklist li::before { content: "\2713  "; color: #00e676; font-weight: bold; }
+  table.pairs { width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.pairs th, table.pairs td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #1f2630; }
+  table.pairs th { color: #ffcc00; font-weight: 600; }
+  table.pairs td { color: #d4dae0; }
+  @media (max-width: 820px) { .grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+
+<header>
+  <h1>SMT &mdash; 4HR Quarters within Daily Block</h1>
+  <p class="subtitle">
+    Apply on a 4HR chart. Each daily candle = 6 × 4HR quarters: Q1 (18&ndash;22 ET) · Q2 (22&ndash;02) · Q3 (02&ndash;06) · Q4 (06&ndash;10) · Q5 (10&ndash;14) · Q6 (14&ndash;18). Detect SMT divergence between correlated pairs (NQ/YM, EURUSD/GBPUSD, XAUUSD/XAGUSD) within and across daily blocks.
+  </p>
+</header>
+
+<main class="grid">
+
+  <section class="panel full">
+    <h2>Concept &mdash; 1 Daily Candle = 6 × 4HR Quarters</h2>
+    <p class="desc">The daily candle aggregates Q1&ndash;Q6. Open = Q1 open, Close = Q6 close, High/Low = max/min wick across the 6 quarters.</p>
+    <canvas id="cConcept" style="height: 240px;"></canvas>
+  </section>
+
+  <section class="panel">
+    <h2>Within-Day Bullish SMT &mdash; Q3</h2>
+    <p class="desc">On Q3, Symbol A takes a low below the Q1+Q2 reference wick low; Symbol B holds. Bull SMT line wick-to-wick on the diverging side.</p>
+    <canvas id="cBull"></canvas>
+    <div class="legend">
+      <span class="lvl"><i></i>Reference low (max of prior Qs)</span>
+      <span class="bull"><i></i>Bull SMT line</span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Within-Day Bearish SMT &mdash; Q4</h2>
+    <p class="desc">On Q4, Symbol A takes a high above Q1+Q2+Q3 reference wick high; Symbol B doesn't. Bear SMT line wick-to-wick.</p>
+    <canvas id="cBear"></canvas>
+    <div class="legend">
+      <span class="lvl"><i></i>Reference high</span>
+      <span class="bear"><i></i>Bear SMT line</span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Cross-Day Bullish SMT &mdash; Q1 vs prev day Q1..Q6 range</h2>
+    <p class="desc">Today's Q1 sweeps below the prev day's MIN low (across Q1..Q6) — only on one symbol. SMT line spans the day boundary, anchored at whichever prev Q held the min.</p>
+    <canvas id="cCrossBull"></canvas>
+    <div class="legend">
+      <span class="lvl"><i></i>Prev day min L</span>
+      <span class="bull"><i></i>Cross-day Bull SMT</span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Cross-Day Bearish SMT &mdash; Q1 vs prev day Q1..Q6 range</h2>
+    <p class="desc">Today's Q1 takes the prev day's MAX high — only on one symbol of the pair.</p>
+    <canvas id="cCrossBear"></canvas>
+    <div class="legend">
+      <span class="lvl"><i></i>Prev day max H</span>
+      <span class="bear"><i></i>Cross-day Bear SMT</span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Tracked Pairs (auto-detected from chart symbol)</h2>
+    <table class="pairs">
+      <thead><tr><th>Group</th><th>Symbol A</th><th>Symbol B</th><th>Asset Class</th></tr></thead>
+      <tbody>
+        <tr><td>NQ / YM</td><td>NQ1!</td><td>YM1!</td><td>US Index Futures</td></tr>
+        <tr><td>EURUSD / GBPUSD</td><td>FOREXCOM:EURUSD</td><td>FOREXCOM:GBPUSD</td><td>FX Majors</td></tr>
+        <tr><td>XAUUSD / XAGUSD</td><td>FOREXCOM:XAUUSD</td><td>FOREXCOM:XAGUSD</td><td>Precious Metals</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="panel">
+    <h2>SMT Validity Checklist</h2>
+    <ul class="checklist">
+      <li>4HR chart only — each candle is one 4HR quarter</li>
+      <li>Reference = wick extreme of prior Q1..Q(n-1) within the same daily block</li>
+      <li>Cross-day reference = MAX H / MIN L across the previous day's Q1..Q6</li>
+      <li>Exactly one symbol takes the reference; the partner does NOT on the same 4HR candle</li>
+      <li>SMT line drawn wick-to-wick from anchor bar to current bar on the chart's symbol</li>
+      <li>Each level consumed once per block — no duplicate fires</li>
+    </ul>
+  </section>
+
+</main>
+
+
+<script>
+"use strict";
+
+const COL = {
+  bg:    "#0d1218",
+  axis:  "#1f2630",
+  bull:  "#00e676",
+  bear:  "#ff1744",
+  level: "#ffcc00",
+  text:  "#d4dae0",
+  dim:   "#6a7480",
+  cUp:   "#26a69a",
+  cDn:   "#ef5350",
+  paneA: "#00bcd4",
+  paneB: "#ff9800",
+};
+
+function setup(id) {
+  const c = document.getElementById(id);
+  const dpr = window.devicePixelRatio || 1;
+  const rect = c.getBoundingClientRect();
+  c.width  = Math.round(rect.width  * dpr);
+  c.height = Math.round(rect.height * dpr);
+  const ctx = c.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, w: rect.width, h: rect.height };
+}
+
+function ys(price, y1, y2) { return y2 - price * (y2 - y1); }
+
+function candle(ctx, x, w, oy, hy, ly, cy, up, dn) {
+  const isUp = cy <= oy;
+  const c = isUp ? up : dn;
+  ctx.strokeStyle = c;
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(x, hy);
+  ctx.lineTo(x, ly);
+  ctx.stroke();
+  const top = Math.min(oy, cy);
+  const ht  = Math.max(Math.abs(cy - oy), 1);
+  ctx.fillStyle = c;
+  ctx.fillRect(Math.round(x - w / 2), Math.round(top), Math.round(w), Math.round(ht));
+}
+
+function dashed(ctx, x1, y1, x2, y2, color, width) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width || 1;
+  ctx.setLineDash([5, 4]);
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function solid(ctx, x1, y1, x2, y2, color, width) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width || 2;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+}
+
+function dot(ctx, x, y, r, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function txt(ctx, x, y, t, color, align, size, weight) {
+  ctx.fillStyle = color;
+  ctx.font = (weight || "normal") + " " + (size || 10) + "px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+  ctx.textAlign = align || "center";
+  ctx.textBaseline = "alphabetic";
+  ctx.fillText(t, x, y);
+}
+
+
+// ─── Aggregate concept: 1 daily candle = 6 × 4HR candles ─────
+function renderAggregate(opts) {
+  const { ctx, w, h } = setup(opts.id);
+  ctx.fillStyle = COL.bg;
+  ctx.fillRect(0, 0, w, h);
+
+  const padT = 32, padB = 30, padL = 20, padR = 20;
+  const y1 = padT, y2 = h - padB;
+
+  const leftEnd  = padL + 100;
+  const arrowEnd = leftEnd + 60;
+
+  const dX = padL + (leftEnd - padL) / 2;
+  const dW = 26;
+  const d = opts.daily;
+  candle(ctx, dX, dW,
+    ys(d.o, y1, y2), ys(d.h, y1, y2),
+    ys(d.l, y1, y2), ys(d.c, y1, y2),
+    COL.cUp, COL.cDn);
+  txt(ctx, dX, y1 - 14, "1 Daily Candle", "#ffffff", "center", 11, "bold");
+  txt(ctx, dX, y2 + 18, "1D", COL.dim, "center", 10);
+  txt(ctx, dX + dW/2 + 4, ys(d.h, y1, y2) + 3, "H", COL.level, "left",  9);
+  txt(ctx, dX + dW/2 + 4, ys(d.l, y1, y2) + 3, "L", COL.level, "left",  9);
+  txt(ctx, dX - dW/2 - 4, ys(d.o, y1, y2) + 3, "O", COL.dim,   "right", 9);
+  txt(ctx, dX - dW/2 - 4, ys(d.c, y1, y2) + 3, "C", COL.dim,   "right", 9);
+
+  const arrowMid = (leftEnd + arrowEnd) / 2;
+  const arrowY = (y1 + y2) / 2;
+  ctx.strokeStyle = COL.level; ctx.lineWidth = 1.6;
+  ctx.beginPath(); ctx.moveTo(leftEnd + 6, arrowY); ctx.lineTo(arrowEnd - 8, arrowY); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(arrowEnd - 8, arrowY - 5);
+  ctx.lineTo(arrowEnd - 1, arrowY);
+  ctx.lineTo(arrowEnd - 8, arrowY + 5);
+  ctx.stroke();
+  txt(ctx, arrowMid, arrowY - 10, "=", COL.level, "center", 16, "bold");
+
+  const rightStart = arrowEnd + 6;
+  const rightWidth = w - rightStart - padR;
+  const qStep = rightWidth / 6;
+  const qW = Math.min(qStep * 0.55, 22);
+  for (let i = 0; i < 6; i++) {
+    const x = rightStart + qStep * (i + 0.5);
+    const q = opts.quarters[i];
+    candle(ctx, x, qW,
+      ys(q.o, y1, y2), ys(q.h, y1, y2),
+      ys(q.l, y1, y2), ys(q.c, y1, y2),
+      COL.cUp, COL.cDn);
+    txt(ctx, x, y2 + 18, q.tag, COL.dim, "center", 9);
+  }
+  txt(ctx, rightStart + rightWidth / 2, y1 - 14, "6 × 4HR Quarters (Q1 \u2192 Q6)", "#ffffff", "center", 11, "bold");
+
+  ctx.setLineDash([3, 3]);
+  ctx.strokeStyle = "rgba(255, 204, 0, 0.35)";
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(dX + dW / 2, ys(d.h, y1, y2)); ctx.lineTo(w - padR, ys(d.h, y1, y2)); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(dX + dW / 2, ys(d.l, y1, y2)); ctx.lineTo(w - padR, ys(d.l, y1, y2)); ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+
+// ─── Two-pane (A on top, B on bottom) renderer for SMT scenarios ─────
+function renderTwoPane(opts) {
+  const { ctx, w, h } = setup(opts.id);
+  ctx.fillStyle = COL.bg;
+  ctx.fillRect(0, 0, w, h);
+
+  const padL = 56, padR = 30, padT = 22, padB = 24, gap = 14;
+  const paneH = (h - padT - padB - gap) / 2;
+  const tY1 = padT,         tY2 = padT + paneH;
+  const bY1 = tY2 + gap,    bY2 = bY1 + paneH;
+
+  const n = opts.candles.length;
+  const xStep = (w - padL - padR) / (n + 1);
+  const cw = Math.min(xStep * 0.55, 20);
+
+  txt(ctx, 6, tY1 + 12, opts.aLabel, COL.paneA, "left", 11, "bold");
+  txt(ctx, 6, bY1 + 12, opts.bLabel, COL.paneB, "left", 11, "bold");
+
+  ctx.strokeStyle = COL.axis; ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(padL, Math.round(tY2) + 0.5); ctx.lineTo(w - padR, Math.round(tY2) + 0.5);
+  ctx.moveTo(padL, Math.round(bY2) + 0.5); ctx.lineTo(w - padR, Math.round(bY2) + 0.5);
+  ctx.stroke();
+
+  if (opts.dayHighlight) {
+    const a = opts.dayHighlight[0], b = opts.dayHighlight[1];
+    const x1 = padL + (a + 0.5) * xStep;
+    const x2 = padL + (b + 1.5) * xStep;
+    ctx.fillStyle = "rgba(255, 204, 0, 0.04)";
+    ctx.fillRect(x1, tY1 - 4, x2 - x1, h - tY1 - padB + 4);
+  }
+
+  if (opts.dayBoundary != null) {
+    const x = padL + (opts.dayBoundary + 1.5) * xStep;
+    ctx.strokeStyle = "rgba(255, 204, 0, 0.55)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath(); ctx.moveTo(x, tY1 - 2); ctx.lineTo(x, bY2 + 2); ctx.stroke();
+    ctx.setLineDash([]);
+    txt(ctx, x, tY1 - 6, "DAY BOUNDARY", "#ffcc00", "center", 9, "bold");
+  }
+
+  for (let i = 0; i < n; i++) {
+    const x = padL + (i + 1) * xStep;
+    const c = opts.candles[i];
+    candle(ctx, x, cw, ys(c.a.o, tY1, tY2), ys(c.a.h, tY1, tY2), ys(c.a.l, tY1, tY2), ys(c.a.c, tY1, tY2), COL.cUp, COL.cDn);
+    candle(ctx, x, cw, ys(c.b.o, bY1, bY2), ys(c.b.h, bY1, bY2), ys(c.b.l, bY1, bY2), ys(c.b.c, bY1, bY2), COL.cUp, COL.cDn);
+    txt(ctx, x, h - 6, c.label, COL.dim, "center", 9);
+  }
+
+  if (opts.refA != null) {
+    const x1 = padL + 0.5 * xStep;
+    const x2 = padL + (n + 0.5) * xStep;
+    dashed(ctx, x1, ys(opts.refA, tY1, tY2), x2, ys(opts.refA, tY1, tY2), COL.level, 1);
+  }
+  if (opts.refB != null) {
+    const x1 = padL + 0.5 * xStep;
+    const x2 = padL + (n + 0.5) * xStep;
+    dashed(ctx, x1, ys(opts.refB, bY1, bY2), x2, ys(opts.refB, bY1, bY2), COL.level, 1);
+  }
+
+  if (opts.smtA) {
+    const fromX = padL + (opts.smtA.from + 1) * xStep;
+    const toX   = padL + (opts.smtA.to   + 1) * xStep;
+    const fromY = ys(opts.smtA.fromY, tY1, tY2);
+    const toY   = ys(opts.smtA.toY,   tY1, tY2);
+    const color = opts.smtA.kind === "bull" ? COL.bull : COL.bear;
+    dot(ctx, fromX, fromY, 2.8, color);
+    solid(ctx, fromX, fromY, toX, toY, color, 2.2);
+    if (opts.smtA.label) txt(ctx, toX + 6, toY + 4, opts.smtA.label, color, "left", 10, "bold");
+  }
+
+  if (opts.holdB) {
+    const x = padL + (opts.holdB.idx + 1) * xStep;
+    const y = ys(opts.holdB.y, bY1, bY2);
+    dot(ctx, x, y, 3, COL.dim);
+    txt(ctx, x + 8, y + 3, "held", COL.dim, "left", 9);
+  }
+
+  if (opts.aSubtitle) txt(ctx, w - padR, tY1 + 12, opts.aSubtitle, COL.dim, "right", 9);
+  if (opts.bSubtitle) txt(ctx, w - padR, bY1 + 12, opts.bSubtitle, COL.dim, "right", 9);
+}
+
+
+// ─── Drawings ──────────────────────────────────────────────────────
+
+function drawConcept() {
+  // 6 × 4HR quarters that aggregate to a daily candle
+  // O = Q1.o = 0.50, C = Q6.c = 0.60
+  // H = Q2.h = 0.85, L = Q5.l = 0.30
+  renderAggregate({
+    id: "cConcept",
+    daily: { o: 0.50, h: 0.85, l: 0.30, c: 0.60 },
+    quarters: [
+      { tag: "Q1 18-22", o: 0.50, h: 0.55, l: 0.45, c: 0.52 },
+      { tag: "Q2 22-02", o: 0.52, h: 0.85, l: 0.50, c: 0.80 },
+      { tag: "Q3 02-06", o: 0.80, h: 0.82, l: 0.65, c: 0.70 },
+      { tag: "Q4 06-10", o: 0.70, h: 0.72, l: 0.45, c: 0.55 },
+      { tag: "Q5 10-14", o: 0.55, h: 0.65, l: 0.30, c: 0.45 },
+      { tag: "Q6 14-18", o: 0.45, h: 0.65, l: 0.42, c: 0.60 },
+    ],
+  });
+}
+
+function drawBull() {
+  const ref = 0.40;
+  renderTwoPane({
+    id: "cBull",
+    aLabel: "NQ1!", bLabel: "YM1!",
+    aSubtitle: "sweeps Q1+Q2 low",
+    bSubtitle: "holds level",
+    candles: [
+      { label: "Q1 18-22",
+        a: { o: 0.55, h: 0.65, l: 0.42, c: 0.50 },
+        b: { o: 0.55, h: 0.65, l: 0.42, c: 0.50 } },
+      { label: "Q2 22-02",
+        a: { o: 0.50, h: 0.60, l: 0.40, c: 0.45 },
+        b: { o: 0.50, h: 0.60, l: 0.40, c: 0.45 } },
+      { label: "Q3 02-06",
+        a: { o: 0.45, h: 0.50, l: 0.32, c: 0.48 },
+        b: { o: 0.45, h: 0.50, l: 0.42, c: 0.48 } },
+      { label: "Q4 06-10",
+        a: { o: 0.48, h: 0.60, l: 0.45, c: 0.58 },
+        b: { o: 0.48, h: 0.58, l: 0.43, c: 0.55 } },
+      { label: "Q5 10-14",
+        a: { o: 0.58, h: 0.70, l: 0.55, c: 0.68 },
+        b: { o: 0.55, h: 0.65, l: 0.50, c: 0.62 } },
+      { label: "Q6 14-18",
+        a: { o: 0.68, h: 0.74, l: 0.65, c: 0.72 },
+        b: { o: 0.62, h: 0.68, l: 0.58, c: 0.66 } },
+    ],
+    refA: ref, refB: ref,
+    smtA: { from: 1, to: 2, fromY: 0.40, toY: 0.32, kind: "bull", label: "Bull SMT (Q3)" },
+    holdB: { idx: 2, y: 0.42 },
+    dayHighlight: [0, 5],
+  });
+}
+
+function drawBear() {
+  const ref = 0.70;
+  renderTwoPane({
+    id: "cBear",
+    aLabel: "NQ1!", bLabel: "YM1!",
+    aSubtitle: "sweeps Q1..Q3 high",
+    bSubtitle: "fails to confirm",
+    candles: [
+      { label: "Q1 18-22",
+        a: { o: 0.50, h: 0.60, l: 0.45, c: 0.55 },
+        b: { o: 0.50, h: 0.60, l: 0.45, c: 0.55 } },
+      { label: "Q2 22-02",
+        a: { o: 0.55, h: 0.65, l: 0.50, c: 0.60 },
+        b: { o: 0.55, h: 0.65, l: 0.50, c: 0.60 } },
+      { label: "Q3 02-06",
+        a: { o: 0.60, h: 0.70, l: 0.55, c: 0.65 },
+        b: { o: 0.60, h: 0.70, l: 0.55, c: 0.65 } },
+      { label: "Q4 06-10",
+        a: { o: 0.65, h: 0.78, l: 0.60, c: 0.62 },
+        b: { o: 0.65, h: 0.68, l: 0.60, c: 0.62 } },
+      { label: "Q5 10-14",
+        a: { o: 0.62, h: 0.66, l: 0.45, c: 0.50 },
+        b: { o: 0.62, h: 0.65, l: 0.45, c: 0.48 } },
+      { label: "Q6 14-18",
+        a: { o: 0.50, h: 0.55, l: 0.40, c: 0.45 },
+        b: { o: 0.48, h: 0.52, l: 0.40, c: 0.43 } },
+    ],
+    refA: ref, refB: ref,
+    smtA: { from: 2, to: 3, fromY: 0.70, toY: 0.78, kind: "bear", label: "Bear SMT (Q4)" },
+    holdB: { idx: 3, y: 0.68 },
+    dayHighlight: [0, 5],
+  });
+}
+
+
+function drawCrossBull() {
+  // Show last 4 of prev day (Q3..Q6) + first 2 of curr day (Q1..Q2)
+  // Prev day's MIN low = 0.40 (set on Q5).
+  // Today's Q1: NQ takes below 0.40 (to 0.32); YM doesn't (low at 0.42).
+  const ref = 0.40;
+  renderTwoPane({
+    id: "cCrossBull",
+    aLabel: "NQ1!", bLabel: "YM1!",
+    aSubtitle: "sweeps prev day MIN L (held by Q5)",
+    bSubtitle: "holds",
+    candles: [
+      { label: "Q3 02-06",
+        a: { o: 0.55, h: 0.60, l: 0.50, c: 0.55 },
+        b: { o: 0.55, h: 0.60, l: 0.50, c: 0.55 } },
+      { label: "Q4 06-10",
+        a: { o: 0.55, h: 0.58, l: 0.48, c: 0.50 },
+        b: { o: 0.55, h: 0.58, l: 0.48, c: 0.50 } },
+      { label: "Q5 10-14",
+        a: { o: 0.50, h: 0.52, l: 0.40, c: 0.45 },
+        b: { o: 0.50, h: 0.52, l: 0.40, c: 0.45 } },
+      { label: "Q6 14-18",
+        a: { o: 0.45, h: 0.50, l: 0.42, c: 0.46 },
+        b: { o: 0.45, h: 0.50, l: 0.42, c: 0.46 } },
+      { label: "Q1 18-22",
+        a: { o: 0.46, h: 0.50, l: 0.32, c: 0.50 },
+        b: { o: 0.46, h: 0.50, l: 0.42, c: 0.50 } },
+      { label: "Q2 22-02",
+        a: { o: 0.50, h: 0.62, l: 0.48, c: 0.60 },
+        b: { o: 0.50, h: 0.60, l: 0.45, c: 0.55 } },
+    ],
+    refA: ref, refB: ref,
+    smtA: { from: 2, to: 4, fromY: 0.40, toY: 0.32, kind: "bull", label: "Cross-Day Bull" },
+    holdB: { idx: 4, y: 0.42 },
+    dayBoundary: 3,
+  });
+}
+
+function drawCrossBear() {
+  // Prev day's MAX high = 0.70 (set on Q3).
+  // Today's Q1: NQ takes above 0.70 (to 0.78); YM doesn't (high at 0.68).
+  const ref = 0.70;
+  renderTwoPane({
+    id: "cCrossBear",
+    aLabel: "NQ1!", bLabel: "YM1!",
+    aSubtitle: "sweeps prev day MAX H (held by Q3)",
+    bSubtitle: "fails",
+    candles: [
+      { label: "Q3 02-06",
+        a: { o: 0.60, h: 0.70, l: 0.55, c: 0.66 },
+        b: { o: 0.60, h: 0.70, l: 0.55, c: 0.66 } },
+      { label: "Q4 06-10",
+        a: { o: 0.66, h: 0.68, l: 0.55, c: 0.60 },
+        b: { o: 0.66, h: 0.68, l: 0.55, c: 0.60 } },
+      { label: "Q5 10-14",
+        a: { o: 0.60, h: 0.64, l: 0.55, c: 0.62 },
+        b: { o: 0.60, h: 0.64, l: 0.55, c: 0.62 } },
+      { label: "Q6 14-18",
+        a: { o: 0.62, h: 0.66, l: 0.58, c: 0.64 },
+        b: { o: 0.62, h: 0.66, l: 0.58, c: 0.64 } },
+      { label: "Q1 18-22",
+        a: { o: 0.64, h: 0.78, l: 0.60, c: 0.62 },
+        b: { o: 0.64, h: 0.68, l: 0.60, c: 0.62 } },
+      { label: "Q2 22-02",
+        a: { o: 0.62, h: 0.65, l: 0.45, c: 0.50 },
+        b: { o: 0.62, h: 0.65, l: 0.50, c: 0.55 } },
+    ],
+    refA: ref, refB: ref,
+    smtA: { from: 0, to: 4, fromY: 0.70, toY: 0.78, kind: "bear", label: "Cross-Day Bear" },
+    holdB: { idx: 4, y: 0.68 },
+    dayBoundary: 3,
+  });
+}
+
+function drawAll() {
+  drawConcept();
+  drawBull();
+  drawBear();
+  drawCrossBull();
+  drawCrossBear();
+}
+
+window.addEventListener("load", drawAll);
+window.addEventListener("resize", () => {
+  clearTimeout(window.__smtResize);
+  window.__smtResize = setTimeout(drawAll, 100);
+});
+</script>
+
+</body>
+</html>
