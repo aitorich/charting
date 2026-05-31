@@ -1,0 +1,832 @@
+// This Pine Script® source code is subject to the terms of the Mozilla Public License 2.0
+// © SMT Quarters Auto - Multi-Pair (NQ/YM, EURUSD/GBPUSD, XAUUSD/XAGUSD)
+//
+// Combines two indicators into one auto-selecting wrapper. The active code
+// path is picked by the chart timeframe; on other TFs the indicator renders
+// nothing (silent guard).
+//
+//   PATH A — Weekly Block / Daily Quarters    (chart TF = Daily)
+//     Each weekly block = 5 daily quarters (Mon -> Fri).
+//       Q1=Mon, Q2=Tue, Q3=Wed, Q4=Thu, Q5=Fri
+//     - Within-week SMT: current Q vs prior Qs (XOR sweep on wick extreme)
+//     - Cross-block (Range): current Q vs MAX H / MIN L across prev Q1..Q5
+//     - Cross-block (Each):  per-quarter line vs each prev Qm wick (toggle)
+//
+//   PATH B — Daily Block / 4HR Quarters       (chart TF = 240)
+//     Each daily block = 6 four-hour quarters.
+//       NQ/YM (open 18:00 ET):
+//         Q1=18-22, Q2=22-02, Q3=02-06, Q4=06-10, Q5=10-14, Q6=14-18
+//       EURUSD/GBPUSD, XAUUSD/XAGUSD (open 17:00 ET):
+//         Q1=17-21, Q2=21-01, Q3=01-05, Q4=05-09, Q5=09-13, Q6=13-17
+//     - Within-day SMT: current Q vs prior Qs (XOR sweep on wick extreme)
+//     - Cross-block (Range): current Q vs MAX H / MIN L across prev Q1..Q6
+//     - Cross-block (Each):  per-quarter line vs each prev Qm wick (toggle)
+//
+//   - Auto-detects pair from chart symbol; supports manual override
+//   - Default FX/metals symbols use FOREXCOM source
+//   - All visuals (SMT lines, Q labels, block separator, PSP, alerts) carry
+//     over unchanged from the standalone indicators.
+
+//@version=6
+indicator("SMT Quarters Auto - Multi-Pair", overlay=true, max_lines_count=500, max_labels_count=500)
+
+// ─── PAIR ─────────────────────────────────────────────────────────────────────
+string forceGroup = input.string("Auto", "Pair Group", options=["Auto", "NQ/YM", "EURUSD/GBPUSD", "XAUUSD/XAGUSD"], group="Pair", tooltip="Auto detects from chart ticker; or force a specific pair group.")
+
+string symNQ  = input.symbol("NQ1!",            "NQ Symbol",     group="Pair Symbols")
+string symYM  = input.symbol("YM1!",            "YM Symbol",     group="Pair Symbols")
+string symEUR = input.symbol("FOREXCOM:EURUSD", "EURUSD Symbol", group="Pair Symbols")
+string symGBP = input.symbol("FOREXCOM:GBPUSD", "GBPUSD Symbol", group="Pair Symbols")
+string symXAU = input.symbol("FOREXCOM:XAUUSD", "XAUUSD Symbol", group="Pair Symbols")
+string symXAG = input.symbol("FOREXCOM:XAGUSD", "XAGUSD Symbol", group="Pair Symbols")
+
+// ─── DISPLAY ──────────────────────────────────────────────────────────────────
+int displayWeeks = input.int(8, "Show Last N Weeks (Daily TF)", minval=1, maxval=52, group="Display")
+int displayDays  = input.int(5, "Show Last N Days (4HR TF)",    minval=1, maxval=60, group="Display")
+
+// ─── SMT LINE STYLE ───────────────────────────────────────────────────────────
+color  bullLineColor = input.color(color.new(#00e676, 0), "Bull Line Color", group="SMT Line")
+color  bearLineColor = input.color(color.new(#ff1744, 0), "Bear Line Color", group="SMT Line")
+int    smtLineWidth  = input.int(2, "Line Width", minval=1, maxval=5, group="SMT Line")
+string smtLineStyleI = input.string("Solid", "Line Style", options=["Solid", "Dashed", "Dotted"], group="SMT Line")
+
+// ─── SMT LABEL ────────────────────────────────────────────────────────────────
+bool   showSmtLabel = input.bool(true, "Show SMT Label", group="SMT Label")
+string smtLabelSzI  = input.string("Small", "Label Size", options=["Tiny", "Small", "Normal", "Large"], group="SMT Label")
+
+// ─── QUARTER LABEL ────────────────────────────────────────────────────────────
+bool  showQLabel  = input.bool(true,  "Show Q Labels", group="Quarter Label", tooltip="Q1..Q5 on Daily TF · Q1..Q6 on 4HR TF")
+color qLabelColor = input.color(color.new(color.gray, 0), "Q Label Color", group="Quarter Label")
+
+// ─── BLOCK SEPARATOR ──────────────────────────────────────────────────────────
+bool   showSep   = input.bool(true,  "Show Block Boundary", group="Block Separator", tooltip="Vertical line at every new block (week on Daily TF, day on 4HR TF).")
+color  sepColor  = input.color(color.new(#ffcc00, 60), "Separator Color", group="Block Separator")
+string sepStyleI = input.string("Dotted", "Separator Style", options=["Solid", "Dashed", "Dotted"], group="Block Separator")
+int    sepWidth  = input.int(1, "Separator Width", minval=1, maxval=3, group="Block Separator")
+
+// ─── PSP ──────────────────────────────────────────────────────────────────────
+bool  showPSP     = input.bool(true,  "Show PSP (pair disagreement)", group="PSP")
+color pspBgColor  = input.color(color.new(#e040fb, 88), "PSP BG Color",     group="PSP")
+color pspBarColor = input.color(color.new(#e040fb, 30), "PSP Candle Color", group="PSP")
+
+// ─── CROSS-BLOCK MODES ───────────────────────────────────────────────────────
+bool showCrossRange = input.bool(true,  "Cross-Block: full prior block range",      group="Cross-Block", tooltip="Single SMT signal when current Q sweeps the MAX H or MIN L taken across the prior block. Anchor = whichever prev Q held that extreme.")
+bool showCrossEach  = input.bool(false, "Cross-Block: all quarters of prior block", group="Cross-Block", tooltip="Per-quarter SMT signal: a separate line whenever the current Q sweeps each individual prev Qm wick. Multiple lines possible per current bar.")
+
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+mkLineStyle(string s) =>
+    s == "Dashed" ? line.style_dashed : s == "Dotted" ? line.style_dotted : line.style_solid
+
+mkLabelSize(string s) =>
+    s == "Tiny" ? size.tiny : s == "Normal" ? size.normal : s == "Large" ? size.large : size.small
+
+// ─── PAIR DETECTION ──────────────────────────────────────────────────────────
+string ticker = syminfo.ticker
+bool tNQ  = str.contains(ticker, "NQ")
+bool tYM  = str.contains(ticker, "YM")
+bool tEUR = str.contains(ticker, "EUR")
+bool tGBP = str.contains(ticker, "GBP")
+bool tXAU = str.contains(ticker, "XAU")
+bool tXAG = str.contains(ticker, "XAG")
+
+string autoGroup   = (tNQ or tYM) ? "NQ/YM" : (tEUR or tGBP) ? "EURUSD/GBPUSD" : (tXAU or tXAG) ? "XAUUSD/XAGUSD" : "NQ/YM"
+string activeGroup = forceGroup == "Auto" ? autoGroup : forceGroup
+
+string partnerSym = activeGroup == "NQ/YM" ? (tYM ? symNQ : symYM) : activeGroup == "EURUSD/GBPUSD" ? (tGBP ? symEUR : symGBP) : (tXAG ? symXAU : symXAG)
+
+bool useFxOffset = activeGroup == "EURUSD/GBPUSD" or activeGroup == "XAUUSD/XAGUSD"
+
+// ─── TF DETECTION ────────────────────────────────────────────────────────────
+bool isDaily = timeframe.isdaily
+bool is4H    = timeframe.period == "240"
+
+// ─── DATA (both partner TFs requested; only the active path consumes them) ──
+[bH_D, bL_D, bO_D, bC_D] = request.security(partnerSym, "D",   [high, low, open, close])
+[bH_4, bL_4, bO_4, bC_4] = request.security(partnerSym, "240", [high, low, open, close])
+
+float aH = high
+float aL = low
+float aO = open
+float aC = close
+
+
+// ╔════════════════════════════════════════════════════════════════════════════╗
+// ║  PATH A — WEEKLY BLOCK / DAILY QUARTERS  (chart TF = Daily)                ║
+// ╚════════════════════════════════════════════════════════════════════════════╝
+
+float wbH = bH_D
+float wbL = bL_D
+float wbO = bO_D
+float wbC = bC_D
+
+// Quarter index by dayofweek (Sun=1, Mon=2, ..., Sat=7); time_close-1 ensures
+// correct trading-day mapping just before bar close.
+int wDow = dayofweek(time_close - 1, "America/New_York")
+int wQ   = wDow == 2 ? 1 : wDow == 3 ? 2 : wDow == 4 ? 3 : wDow == 5 ? 4 : wDow == 6 ? 5 : 0
+bool wBlockOn = wQ > 0
+
+int  wkStart    = time("W")
+bool wIsNewWeek = isDaily and wkStart != nz(wkStart[1], wkStart)
+bool wNewBlock  = wIsNewWeek
+
+int  wDisplayBars = displayWeeks * 7
+bool wInDisplay   = bar_index >= (last_bar_index - wDisplayBars)
+
+// State (5 quarters)
+var float wq1aH = na, var float wq1aL = na, var int wq1b = na
+var float wq2aH = na, var float wq2aL = na, var int wq2b = na
+var float wq3aH = na, var float wq3aL = na, var int wq3b = na
+var float wq4aH = na, var float wq4aL = na, var int wq4b = na
+var float wq5aH = na, var float wq5aL = na, var int wq5b = na
+var float wq1bH = na, var float wq1bL = na
+var float wq2bH = na, var float wq2bL = na
+var float wq3bH = na, var float wq3bL = na
+var float wq4bH = na, var float wq4bL = na
+var float wq5bH = na, var float wq5bL = na
+
+// Prev block (5 quarters)
+var float wpv1aH = na, var float wpv1aL = na, var int wpv1b = na
+var float wpv2aH = na, var float wpv2aL = na, var int wpv2b = na
+var float wpv3aH = na, var float wpv3aL = na, var int wpv3b = na
+var float wpv4aH = na, var float wpv4aL = na, var int wpv4b = na
+var float wpv5aH = na, var float wpv5aL = na, var int wpv5b = na
+var float wpv1bH = na, var float wpv1bL = na
+var float wpv2bH = na, var float wpv2bL = na
+var float wpv3bH = na, var float wpv3bL = na
+var float wpv4bH = na, var float wpv4bL = na
+var float wpv5bH = na, var float wpv5bL = na
+
+if isDaily and wNewBlock
+    wpv1aH := wq1aH, wpv1aL := wq1aL, wpv1b := wq1b
+    wpv1bH := wq1bH, wpv1bL := wq1bL
+    wpv2aH := wq2aH, wpv2aL := wq2aL, wpv2b := wq2b
+    wpv2bH := wq2bH, wpv2bL := wq2bL
+    wpv3aH := wq3aH, wpv3aL := wq3aL, wpv3b := wq3b
+    wpv3bH := wq3bH, wpv3bL := wq3bL
+    wpv4aH := wq4aH, wpv4aL := wq4aL, wpv4b := wq4b
+    wpv4bH := wq4bH, wpv4bL := wq4bL
+    wpv5aH := wq5aH, wpv5aL := wq5aL, wpv5b := wq5b
+    wpv5bH := wq5bH, wpv5bL := wq5bL
+    wq1aH := na, wq1aL := na, wq1b := na
+    wq2aH := na, wq2aL := na, wq2b := na
+    wq3aH := na, wq3aL := na, wq3b := na
+    wq4aH := na, wq4aL := na, wq4b := na
+    wq5aH := na, wq5aL := na, wq5b := na
+    wq1bH := na, wq1bL := na
+    wq2bH := na, wq2bL := na
+    wq3bH := na, wq3bL := na
+    wq4bH := na, wq4bL := na
+    wq5bH := na, wq5bL := na
+
+if isDaily and wBlockOn
+    if wQ == 1
+        wq1aH := aH, wq1aL := aL, wq1b := bar_index
+        wq1bH := wbH, wq1bL := wbL
+    else if wQ == 2
+        wq2aH := aH, wq2aL := aL, wq2b := bar_index
+        wq2bH := wbH, wq2bL := wbL
+    else if wQ == 3
+        wq3aH := aH, wq3aL := aL, wq3b := bar_index
+        wq3bH := wbH, wq3bL := wbL
+    else if wQ == 4
+        wq4aH := aH, wq4aL := aL, wq4b := bar_index
+        wq4bH := wbH, wq4bL := wbL
+    else if wQ == 5
+        wq5aH := aH, wq5aL := aL, wq5b := bar_index
+        wq5bH := wbH, wq5bL := wbL
+
+
+// Prior High/Low within current week (q >= 2; relaxed)
+float wpHighA = na, float wpHighB = na
+int   wpHBar  = na
+float wpLowA  = na, float wpLowB  = na
+int   wpLBar  = na
+
+if isDaily and wBlockOn and wQ >= 2
+    if not na(wq1aH)
+        wpHighA := wq1aH
+        wpHBar  := wq1b
+        wpLowA  := wq1aL
+        wpLBar  := wq1b
+    if not na(wq1bH)
+        wpHighB := wq1bH
+    if not na(wq1bL)
+        wpLowB := wq1bL
+
+    if wQ >= 3
+        if not na(wq2aH) and (na(wpHighA) or wq2aH > wpHighA)
+            wpHighA := wq2aH
+            wpHBar  := wq2b
+        if not na(wq2bH) and (na(wpHighB) or wq2bH > wpHighB)
+            wpHighB := wq2bH
+        if not na(wq2aL) and (na(wpLowA) or wq2aL < wpLowA)
+            wpLowA := wq2aL
+            wpLBar := wq2b
+        if not na(wq2bL) and (na(wpLowB) or wq2bL < wpLowB)
+            wpLowB := wq2bL
+
+    if wQ >= 4
+        if not na(wq3aH) and (na(wpHighA) or wq3aH > wpHighA)
+            wpHighA := wq3aH
+            wpHBar  := wq3b
+        if not na(wq3bH) and (na(wpHighB) or wq3bH > wpHighB)
+            wpHighB := wq3bH
+        if not na(wq3aL) and (na(wpLowA) or wq3aL < wpLowA)
+            wpLowA := wq3aL
+            wpLBar := wq3b
+        if not na(wq3bL) and (na(wpLowB) or wq3bL < wpLowB)
+            wpLowB := wq3bL
+
+    if wQ >= 5
+        if not na(wq4aH) and (na(wpHighA) or wq4aH > wpHighA)
+            wpHighA := wq4aH
+            wpHBar  := wq4b
+        if not na(wq4bH) and (na(wpHighB) or wq4bH > wpHighB)
+            wpHighB := wq4bH
+        if not na(wq4aL) and (na(wpLowA) or wq4aL < wpLowA)
+            wpLowA := wq4aL
+            wpLBar := wq4b
+        if not na(wq4bL) and (na(wpLowB) or wq4bL < wpLowB)
+            wpLowB := wq4bL
+
+
+// Prev block max/min (across pv1..pv5)
+float wpvHighA = na, float wpvHighB = na
+int   wpvHBar  = na
+float wpvLowA  = na, float wpvLowB  = na
+int   wpvLBar  = na
+
+if isDaily and wBlockOn
+    if not na(wpv1aH)
+        wpvHighA := wpv1aH
+        wpvHBar  := wpv1b
+        wpvLowA  := wpv1aL
+        wpvLBar  := wpv1b
+    if not na(wpv1bH)
+        wpvHighB := wpv1bH
+    if not na(wpv1bL)
+        wpvLowB := wpv1bL
+
+    if not na(wpv2aH) and (na(wpvHighA) or wpv2aH > wpvHighA)
+        wpvHighA := wpv2aH
+        wpvHBar  := wpv2b
+    if not na(wpv2bH) and (na(wpvHighB) or wpv2bH > wpvHighB)
+        wpvHighB := wpv2bH
+    if not na(wpv2aL) and (na(wpvLowA) or wpv2aL < wpvLowA)
+        wpvLowA := wpv2aL
+        wpvLBar := wpv2b
+    if not na(wpv2bL) and (na(wpvLowB) or wpv2bL < wpvLowB)
+        wpvLowB := wpv2bL
+
+    if not na(wpv3aH) and (na(wpvHighA) or wpv3aH > wpvHighA)
+        wpvHighA := wpv3aH
+        wpvHBar  := wpv3b
+    if not na(wpv3bH) and (na(wpvHighB) or wpv3bH > wpvHighB)
+        wpvHighB := wpv3bH
+    if not na(wpv3aL) and (na(wpvLowA) or wpv3aL < wpvLowA)
+        wpvLowA := wpv3aL
+        wpvLBar := wpv3b
+    if not na(wpv3bL) and (na(wpvLowB) or wpv3bL < wpvLowB)
+        wpvLowB := wpv3bL
+
+    if not na(wpv4aH) and (na(wpvHighA) or wpv4aH > wpvHighA)
+        wpvHighA := wpv4aH
+        wpvHBar  := wpv4b
+    if not na(wpv4bH) and (na(wpvHighB) or wpv4bH > wpvHighB)
+        wpvHighB := wpv4bH
+    if not na(wpv4aL) and (na(wpvLowA) or wpv4aL < wpvLowA)
+        wpvLowA := wpv4aL
+        wpvLBar := wpv4b
+    if not na(wpv4bL) and (na(wpvLowB) or wpv4bL < wpvLowB)
+        wpvLowB := wpv4bL
+
+    if not na(wpv5aH) and (na(wpvHighA) or wpv5aH > wpvHighA)
+        wpvHighA := wpv5aH
+        wpvHBar  := wpv5b
+    if not na(wpv5bH) and (na(wpvHighB) or wpv5bH > wpvHighB)
+        wpvHighB := wpv5bH
+    if not na(wpv5aL) and (na(wpvLowA) or wpv5aL < wpvLowA)
+        wpvLowA := wpv5aL
+        wpvLBar := wpv5b
+    if not na(wpv5bL) and (na(wpvLowB) or wpv5bL < wpvLowB)
+        wpvLowB := wpv5bL
+
+
+// SMT detection within block (wQ >= 2)
+bool wbear = false
+bool wbull = false
+if isDaily and wBlockOn and wQ >= 2 and not na(wpHighA) and not na(wpHighB)
+    if (aH > wpHighA and not (wbH > wpHighB)) or (wbH > wpHighB and not (aH > wpHighA))
+        wbear := true
+if isDaily and wBlockOn and wQ >= 2 and not na(wpLowA) and not na(wpLowB)
+    if (aL < wpLowA and not (wbL < wpLowB)) or (wbL < wpLowB and not (aL < wpLowA))
+        wbull := true
+
+// Cross-block SMT (current Q vs prev block's MAX H / MIN L)
+bool wcrossBear = false
+bool wcrossBull = false
+if showCrossRange and isDaily and wBlockOn and not na(wpvHighA) and not na(wpvHighB)
+    if (aH > wpvHighA and not (wbH > wpvHighB)) or (wbH > wpvHighB and not (aH > wpvHighA))
+        wcrossBear := true
+if showCrossRange and isDaily and wBlockOn and not na(wpvLowA) and not na(wpvLowB)
+    if (aL < wpvLowA and not (wbL < wpvLowB)) or (wbL < wpvLowB and not (aL < wpvLowA))
+        wcrossBull := true
+
+
+// Draw within-block & cross-block lines
+string wQTagBlock = "Q" + str.tostring(wQ)
+
+if wbear and not na(wpHBar) and wInDisplay and barstate.isconfirmed
+    line.new(wpHBar, wpHighA, bar_index, aH, color=bearLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
+    if showSmtLabel
+        label.new(bar_index, aH, wQTagBlock, style=label.style_none, textcolor=bearLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
+
+if wbull and not na(wpLBar) and wInDisplay and barstate.isconfirmed
+    line.new(wpLBar, wpLowA, bar_index, aL, color=bullLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
+    if showSmtLabel
+        label.new(bar_index, aL, wQTagBlock, style=label.style_none, textcolor=bullLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
+
+if wcrossBear and not na(wpvHBar) and wInDisplay and barstate.isconfirmed
+    line.new(wpvHBar, wpvHighA, bar_index, aH, color=bearLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
+    if showSmtLabel
+        label.new(bar_index, aH, wQTagBlock + "*", style=label.style_none, textcolor=bearLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
+
+if wcrossBull and not na(wpvLBar) and wInDisplay and barstate.isconfirmed
+    line.new(wpvLBar, wpvLowA, bar_index, aL, color=bullLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
+    if showSmtLabel
+        label.new(bar_index, aL, wQTagBlock + "*", style=label.style_none, textcolor=bullLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
+
+
+// Cross-block per-quarter (each prev Q individually)
+bool wxeBear = false
+bool wxeBull = false
+if showCrossEach and isDaily and wBlockOn and wInDisplay and barstate.isconfirmed
+    // vs prev Q1
+    if not na(wpv1aH) and not na(wpv1bH)
+        if (aH > wpv1aH and not (wbH > wpv1bH)) or (wbH > wpv1bH and not (aH > wpv1aH))
+            wxeBear := true
+            line.new(wpv1b, wpv1aH, bar_index, aH, color=bearLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
+            if showSmtLabel
+                label.new(bar_index, aH, wQTagBlock + "/Q1", style=label.style_none, textcolor=bearLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
+    if not na(wpv1aL) and not na(wpv1bL)
+        if (aL < wpv1aL and not (wbL < wpv1bL)) or (wbL < wpv1bL and not (aL < wpv1aL))
+            wxeBull := true
+            line.new(wpv1b, wpv1aL, bar_index, aL, color=bullLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
+            if showSmtLabel
+                label.new(bar_index, aL, wQTagBlock + "/Q1", style=label.style_none, textcolor=bullLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
+    // vs prev Q2
+    if not na(wpv2aH) and not na(wpv2bH)
+        if (aH > wpv2aH and not (wbH > wpv2bH)) or (wbH > wpv2bH and not (aH > wpv2aH))
+            wxeBear := true
+            line.new(wpv2b, wpv2aH, bar_index, aH, color=bearLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
+            if showSmtLabel
+                label.new(bar_index, aH, wQTagBlock + "/Q2", style=label.style_none, textcolor=bearLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
+    if not na(wpv2aL) and not na(wpv2bL)
+        if (aL < wpv2aL and not (wbL < wpv2bL)) or (wbL < wpv2bL and not (aL < wpv2aL))
+            wxeBull := true
+            line.new(wpv2b, wpv2aL, bar_index, aL, color=bullLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
+            if showSmtLabel
+                label.new(bar_index, aL, wQTagBlock + "/Q2", style=label.style_none, textcolor=bullLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
+    // vs prev Q3
+    if not na(wpv3aH) and not na(wpv3bH)
+        if (aH > wpv3aH and not (wbH > wpv3bH)) or (wbH > wpv3bH and not (aH > wpv3aH))
+            wxeBear := true
+            line.new(wpv3b, wpv3aH, bar_index, aH, color=bearLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
+            if showSmtLabel
+                label.new(bar_index, aH, wQTagBlock + "/Q3", style=label.style_none, textcolor=bearLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
+    if not na(wpv3aL) and not na(wpv3bL)
+        if (aL < wpv3aL and not (wbL < wpv3bL)) or (wbL < wpv3bL and not (aL < wpv3aL))
+            wxeBull := true
+            line.new(wpv3b, wpv3aL, bar_index, aL, color=bullLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
+            if showSmtLabel
+                label.new(bar_index, aL, wQTagBlock + "/Q3", style=label.style_none, textcolor=bullLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
+    // vs prev Q4
+    if not na(wpv4aH) and not na(wpv4bH)
+        if (aH > wpv4aH and not (wbH > wpv4bH)) or (wbH > wpv4bH and not (aH > wpv4aH))
+            wxeBear := true
+            line.new(wpv4b, wpv4aH, bar_index, aH, color=bearLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
+            if showSmtLabel
+                label.new(bar_index, aH, wQTagBlock + "/Q4", style=label.style_none, textcolor=bearLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
+    if not na(wpv4aL) and not na(wpv4bL)
+        if (aL < wpv4aL and not (wbL < wpv4bL)) or (wbL < wpv4bL and not (aL < wpv4aL))
+            wxeBull := true
+            line.new(wpv4b, wpv4aL, bar_index, aL, color=bullLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
+            if showSmtLabel
+                label.new(bar_index, aL, wQTagBlock + "/Q4", style=label.style_none, textcolor=bullLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
+    // vs prev Q5
+    if not na(wpv5aH) and not na(wpv5bH)
+        if (aH > wpv5aH and not (wbH > wpv5bH)) or (wbH > wpv5bH and not (aH > wpv5aH))
+            wxeBear := true
+            line.new(wpv5b, wpv5aH, bar_index, aH, color=bearLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
+            if showSmtLabel
+                label.new(bar_index, aH, wQTagBlock + "/Q5", style=label.style_none, textcolor=bearLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
+    if not na(wpv5aL) and not na(wpv5bL)
+        if (aL < wpv5aL and not (wbL < wpv5bL)) or (wbL < wpv5bL and not (aL < wpv5aL))
+            wxeBull := true
+            line.new(wpv5b, wpv5aL, bar_index, aL, color=bullLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
+            if showSmtLabel
+                label.new(bar_index, aL, wQTagBlock + "/Q5", style=label.style_none, textcolor=bullLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
+
+
+// Quarter labels (Daily TF)
+if isDaily and showQLabel and wBlockOn and wInDisplay and barstate.isconfirmed
+    label.new(bar_index, low, "Q" + str.tostring(wQ), style=label.style_none, textcolor=qLabelColor, size=size.tiny, yloc=yloc.belowbar, xloc=xloc.bar_index)
+
+// Week separator
+if isDaily and wNewBlock and showSep and wInDisplay and barstate.isconfirmed
+    line.new(bar_index, high, bar_index, low, extend=extend.both, color=sepColor, style=mkLineStyle(sepStyleI), width=sepWidth, xloc=xloc.bar_index)
+
+
+// ╔════════════════════════════════════════════════════════════════════════════╗
+// ║  PATH B — DAILY BLOCK / 4HR QUARTERS  (chart TF = 240)                     ║
+// ╚════════════════════════════════════════════════════════════════════════════╝
+
+float dbH = bH_4
+float dbL = bL_4
+float dbO = bO_4
+float dbC = bC_4
+
+// Quarter index by ET hour. NQ/YM open 18:00 ET; FX/metals 17:00 ET.
+int hET = hour(time, "America/New_York")
+int dQ  = useFxOffset ? (hET == 17 ? 1 : hET == 21 ? 2 : hET == 1 ? 3 : hET == 5 ? 4 : hET == 9 ? 5 : hET == 13 ? 6 : 0) : (hET == 18 ? 1 : hET == 22 ? 2 : hET == 2 ? 3 : hET == 6 ? 4 : hET == 10 ? 5 : hET == 14 ? 6 : 0)
+bool dBlockOn = dQ > 0
+
+bool dNewBlock = is4H and dQ == 1 and (na(dQ[1]) or dQ[1] != 1)
+
+int  dDisplayBars = displayDays * 6
+bool dInDisplay   = bar_index >= (last_bar_index - dDisplayBars)
+
+// State (6 quarters)
+var float dq1aH = na, var float dq1aL = na, var int dq1b = na
+var float dq2aH = na, var float dq2aL = na, var int dq2b = na
+var float dq3aH = na, var float dq3aL = na, var int dq3b = na
+var float dq4aH = na, var float dq4aL = na, var int dq4b = na
+var float dq5aH = na, var float dq5aL = na, var int dq5b = na
+var float dq6aH = na, var float dq6aL = na, var int dq6b = na
+var float dq1bH = na, var float dq1bL = na
+var float dq2bH = na, var float dq2bL = na
+var float dq3bH = na, var float dq3bL = na
+var float dq4bH = na, var float dq4bL = na
+var float dq5bH = na, var float dq5bL = na
+var float dq6bH = na, var float dq6bL = na
+
+// Prev block (6 quarters)
+var float dpv1aH = na, var float dpv1aL = na, var int dpv1b = na
+var float dpv2aH = na, var float dpv2aL = na, var int dpv2b = na
+var float dpv3aH = na, var float dpv3aL = na, var int dpv3b = na
+var float dpv4aH = na, var float dpv4aL = na, var int dpv4b = na
+var float dpv5aH = na, var float dpv5aL = na, var int dpv5b = na
+var float dpv6aH = na, var float dpv6aL = na, var int dpv6b = na
+var float dpv1bH = na, var float dpv1bL = na
+var float dpv2bH = na, var float dpv2bL = na
+var float dpv3bH = na, var float dpv3bL = na
+var float dpv4bH = na, var float dpv4bL = na
+var float dpv5bH = na, var float dpv5bL = na
+var float dpv6bH = na, var float dpv6bL = na
+
+if is4H and dNewBlock
+    dpv1aH := dq1aH, dpv1aL := dq1aL, dpv1b := dq1b
+    dpv1bH := dq1bH, dpv1bL := dq1bL
+    dpv2aH := dq2aH, dpv2aL := dq2aL, dpv2b := dq2b
+    dpv2bH := dq2bH, dpv2bL := dq2bL
+    dpv3aH := dq3aH, dpv3aL := dq3aL, dpv3b := dq3b
+    dpv3bH := dq3bH, dpv3bL := dq3bL
+    dpv4aH := dq4aH, dpv4aL := dq4aL, dpv4b := dq4b
+    dpv4bH := dq4bH, dpv4bL := dq4bL
+    dpv5aH := dq5aH, dpv5aL := dq5aL, dpv5b := dq5b
+    dpv5bH := dq5bH, dpv5bL := dq5bL
+    dpv6aH := dq6aH, dpv6aL := dq6aL, dpv6b := dq6b
+    dpv6bH := dq6bH, dpv6bL := dq6bL
+    dq1aH := na, dq1aL := na, dq1b := na
+    dq2aH := na, dq2aL := na, dq2b := na
+    dq3aH := na, dq3aL := na, dq3b := na
+    dq4aH := na, dq4aL := na, dq4b := na
+    dq5aH := na, dq5aL := na, dq5b := na
+    dq6aH := na, dq6aL := na, dq6b := na
+    dq1bH := na, dq1bL := na
+    dq2bH := na, dq2bL := na
+    dq3bH := na, dq3bL := na
+    dq4bH := na, dq4bL := na
+    dq5bH := na, dq5bL := na
+    dq6bH := na, dq6bL := na
+
+if is4H and dBlockOn
+    if dQ == 1
+        dq1aH := aH, dq1aL := aL, dq1b := bar_index
+        dq1bH := dbH, dq1bL := dbL
+    else if dQ == 2
+        dq2aH := aH, dq2aL := aL, dq2b := bar_index
+        dq2bH := dbH, dq2bL := dbL
+    else if dQ == 3
+        dq3aH := aH, dq3aL := aL, dq3b := bar_index
+        dq3bH := dbH, dq3bL := dbL
+    else if dQ == 4
+        dq4aH := aH, dq4aL := aL, dq4b := bar_index
+        dq4bH := dbH, dq4bL := dbL
+    else if dQ == 5
+        dq5aH := aH, dq5aL := aL, dq5b := bar_index
+        dq5bH := dbH, dq5bL := dbL
+    else if dQ == 6
+        dq6aH := aH, dq6aL := aL, dq6b := bar_index
+        dq6bH := dbH, dq6bL := dbL
+
+
+// Prior High/Low within current day (q >= 2; relaxed)
+float dpHighA = na, float dpHighB = na
+int   dpHBar  = na
+float dpLowA  = na, float dpLowB  = na
+int   dpLBar  = na
+
+if is4H and dBlockOn and dQ >= 2
+    if not na(dq1aH)
+        dpHighA := dq1aH
+        dpHBar  := dq1b
+        dpLowA  := dq1aL
+        dpLBar  := dq1b
+    if not na(dq1bH)
+        dpHighB := dq1bH
+    if not na(dq1bL)
+        dpLowB := dq1bL
+
+    if dQ >= 3
+        if not na(dq2aH) and (na(dpHighA) or dq2aH > dpHighA)
+            dpHighA := dq2aH
+            dpHBar  := dq2b
+        if not na(dq2bH) and (na(dpHighB) or dq2bH > dpHighB)
+            dpHighB := dq2bH
+        if not na(dq2aL) and (na(dpLowA) or dq2aL < dpLowA)
+            dpLowA := dq2aL
+            dpLBar := dq2b
+        if not na(dq2bL) and (na(dpLowB) or dq2bL < dpLowB)
+            dpLowB := dq2bL
+
+    if dQ >= 4
+        if not na(dq3aH) and (na(dpHighA) or dq3aH > dpHighA)
+            dpHighA := dq3aH
+            dpHBar  := dq3b
+        if not na(dq3bH) and (na(dpHighB) or dq3bH > dpHighB)
+            dpHighB := dq3bH
+        if not na(dq3aL) and (na(dpLowA) or dq3aL < dpLowA)
+            dpLowA := dq3aL
+            dpLBar := dq3b
+        if not na(dq3bL) and (na(dpLowB) or dq3bL < dpLowB)
+            dpLowB := dq3bL
+
+    if dQ >= 5
+        if not na(dq4aH) and (na(dpHighA) or dq4aH > dpHighA)
+            dpHighA := dq4aH
+            dpHBar  := dq4b
+        if not na(dq4bH) and (na(dpHighB) or dq4bH > dpHighB)
+            dpHighB := dq4bH
+        if not na(dq4aL) and (na(dpLowA) or dq4aL < dpLowA)
+            dpLowA := dq4aL
+            dpLBar := dq4b
+        if not na(dq4bL) and (na(dpLowB) or dq4bL < dpLowB)
+            dpLowB := dq4bL
+
+    if dQ >= 6
+        if not na(dq5aH) and (na(dpHighA) or dq5aH > dpHighA)
+            dpHighA := dq5aH
+            dpHBar  := dq5b
+        if not na(dq5bH) and (na(dpHighB) or dq5bH > dpHighB)
+            dpHighB := dq5bH
+        if not na(dq5aL) and (na(dpLowA) or dq5aL < dpLowA)
+            dpLowA := dq5aL
+            dpLBar := dq5b
+        if not na(dq5bL) and (na(dpLowB) or dq5bL < dpLowB)
+            dpLowB := dq5bL
+
+
+// Prev block max/min (across pv1..pv6)
+float dpvHighA = na, float dpvHighB = na
+int   dpvHBar  = na
+float dpvLowA  = na, float dpvLowB  = na
+int   dpvLBar  = na
+
+if is4H and dBlockOn
+    if not na(dpv1aH)
+        dpvHighA := dpv1aH
+        dpvHBar  := dpv1b
+        dpvLowA  := dpv1aL
+        dpvLBar  := dpv1b
+    if not na(dpv1bH)
+        dpvHighB := dpv1bH
+    if not na(dpv1bL)
+        dpvLowB := dpv1bL
+
+    if not na(dpv2aH) and (na(dpvHighA) or dpv2aH > dpvHighA)
+        dpvHighA := dpv2aH
+        dpvHBar  := dpv2b
+    if not na(dpv2bH) and (na(dpvHighB) or dpv2bH > dpvHighB)
+        dpvHighB := dpv2bH
+    if not na(dpv2aL) and (na(dpvLowA) or dpv2aL < dpvLowA)
+        dpvLowA := dpv2aL
+        dpvLBar := dpv2b
+    if not na(dpv2bL) and (na(dpvLowB) or dpv2bL < dpvLowB)
+        dpvLowB := dpv2bL
+
+    if not na(dpv3aH) and (na(dpvHighA) or dpv3aH > dpvHighA)
+        dpvHighA := dpv3aH
+        dpvHBar  := dpv3b
+    if not na(dpv3bH) and (na(dpvHighB) or dpv3bH > dpvHighB)
+        dpvHighB := dpv3bH
+    if not na(dpv3aL) and (na(dpvLowA) or dpv3aL < dpvLowA)
+        dpvLowA := dpv3aL
+        dpvLBar := dpv3b
+    if not na(dpv3bL) and (na(dpvLowB) or dpv3bL < dpvLowB)
+        dpvLowB := dpv3bL
+
+    if not na(dpv4aH) and (na(dpvHighA) or dpv4aH > dpvHighA)
+        dpvHighA := dpv4aH
+        dpvHBar  := dpv4b
+    if not na(dpv4bH) and (na(dpvHighB) or dpv4bH > dpvHighB)
+        dpvHighB := dpv4bH
+    if not na(dpv4aL) and (na(dpvLowA) or dpv4aL < dpvLowA)
+        dpvLowA := dpv4aL
+        dpvLBar := dpv4b
+    if not na(dpv4bL) and (na(dpvLowB) or dpv4bL < dpvLowB)
+        dpvLowB := dpv4bL
+
+    if not na(dpv5aH) and (na(dpvHighA) or dpv5aH > dpvHighA)
+        dpvHighA := dpv5aH
+        dpvHBar  := dpv5b
+    if not na(dpv5bH) and (na(dpvHighB) or dpv5bH > dpvHighB)
+        dpvHighB := dpv5bH
+    if not na(dpv5aL) and (na(dpvLowA) or dpv5aL < dpvLowA)
+        dpvLowA := dpv5aL
+        dpvLBar := dpv5b
+    if not na(dpv5bL) and (na(dpvLowB) or dpv5bL < dpvLowB)
+        dpvLowB := dpv5bL
+
+    if not na(dpv6aH) and (na(dpvHighA) or dpv6aH > dpvHighA)
+        dpvHighA := dpv6aH
+        dpvHBar  := dpv6b
+    if not na(dpv6bH) and (na(dpvHighB) or dpv6bH > dpvHighB)
+        dpvHighB := dpv6bH
+    if not na(dpv6aL) and (na(dpvLowA) or dpv6aL < dpvLowA)
+        dpvLowA := dpv6aL
+        dpvLBar := dpv6b
+    if not na(dpv6bL) and (na(dpvLowB) or dpv6bL < dpvLowB)
+        dpvLowB := dpv6bL
+
+
+// SMT detection within block (dQ >= 2)
+bool dbear = false
+bool dbull = false
+if is4H and dBlockOn and dQ >= 2 and not na(dpHighA) and not na(dpHighB)
+    if (aH > dpHighA and not (dbH > dpHighB)) or (dbH > dpHighB and not (aH > dpHighA))
+        dbear := true
+if is4H and dBlockOn and dQ >= 2 and not na(dpLowA) and not na(dpLowB)
+    if (aL < dpLowA and not (dbL < dpLowB)) or (dbL < dpLowB and not (aL < dpLowA))
+        dbull := true
+
+// Cross-block SMT (current Q vs prev day's MAX H / MIN L)
+bool dcrossBear = false
+bool dcrossBull = false
+if showCrossRange and is4H and dBlockOn and not na(dpvHighA) and not na(dpvHighB)
+    if (aH > dpvHighA and not (dbH > dpvHighB)) or (dbH > dpvHighB and not (aH > dpvHighA))
+        dcrossBear := true
+if showCrossRange and is4H and dBlockOn and not na(dpvLowA) and not na(dpvLowB)
+    if (aL < dpvLowA and not (dbL < dpvLowB)) or (dbL < dpvLowB and not (aL < dpvLowA))
+        dcrossBull := true
+
+
+// Draw within-block & cross-block lines
+string dQTagBlock = "Q" + str.tostring(dQ)
+
+if dbear and not na(dpHBar) and dInDisplay and barstate.isconfirmed
+    line.new(dpHBar, dpHighA, bar_index, aH, color=bearLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
+    if showSmtLabel
+        label.new(bar_index, aH, dQTagBlock, style=label.style_none, textcolor=bearLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
+
+if dbull and not na(dpLBar) and dInDisplay and barstate.isconfirmed
+    line.new(dpLBar, dpLowA, bar_index, aL, color=bullLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
+    if showSmtLabel
+        label.new(bar_index, aL, dQTagBlock, style=label.style_none, textcolor=bullLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
+
+if dcrossBear and not na(dpvHBar) and dInDisplay and barstate.isconfirmed
+    line.new(dpvHBar, dpvHighA, bar_index, aH, color=bearLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
+    if showSmtLabel
+        label.new(bar_index, aH, dQTagBlock + "*", style=label.style_none, textcolor=bearLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
+
+if dcrossBull and not na(dpvLBar) and dInDisplay and barstate.isconfirmed
+    line.new(dpvLBar, dpvLowA, bar_index, aL, color=bullLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
+    if showSmtLabel
+        label.new(bar_index, aL, dQTagBlock + "*", style=label.style_none, textcolor=bullLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
+
+
+// Cross-block per-quarter (each prev Q individually)
+bool dxeBear = false
+bool dxeBull = false
+if showCrossEach and is4H and dBlockOn and dInDisplay and barstate.isconfirmed
+    // vs prev Q1
+    if not na(dpv1aH) and not na(dpv1bH)
+        if (aH > dpv1aH and not (dbH > dpv1bH)) or (dbH > dpv1bH and not (aH > dpv1aH))
+            dxeBear := true
+            line.new(dpv1b, dpv1aH, bar_index, aH, color=bearLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
+            if showSmtLabel
+                label.new(bar_index, aH, dQTagBlock + "/Q1", style=label.style_none, textcolor=bearLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
+    if not na(dpv1aL) and not na(dpv1bL)
+        if (aL < dpv1aL and not (dbL < dpv1bL)) or (dbL < dpv1bL and not (aL < dpv1aL))
+            dxeBull := true
+            line.new(dpv1b, dpv1aL, bar_index, aL, color=bullLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
+            if showSmtLabel
+                label.new(bar_index, aL, dQTagBlock + "/Q1", style=label.style_none, textcolor=bullLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
+    // vs prev Q2
+    if not na(dpv2aH) and not na(dpv2bH)
+        if (aH > dpv2aH and not (dbH > dpv2bH)) or (dbH > dpv2bH and not (aH > dpv2aH))
+            dxeBear := true
+            line.new(dpv2b, dpv2aH, bar_index, aH, color=bearLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
+            if showSmtLabel
+                label.new(bar_index, aH, dQTagBlock + "/Q2", style=label.style_none, textcolor=bearLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
+    if not na(dpv2aL) and not na(dpv2bL)
+        if (aL < dpv2aL and not (dbL < dpv2bL)) or (dbL < dpv2bL and not (aL < dpv2aL))
+            dxeBull := true
+            line.new(dpv2b, dpv2aL, bar_index, aL, color=bullLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
+            if showSmtLabel
+                label.new(bar_index, aL, dQTagBlock + "/Q2", style=label.style_none, textcolor=bullLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
+    // vs prev Q3
+    if not na(dpv3aH) and not na(dpv3bH)
+        if (aH > dpv3aH and not (dbH > dpv3bH)) or (dbH > dpv3bH and not (aH > dpv3aH))
+            dxeBear := true
+            line.new(dpv3b, dpv3aH, bar_index, aH, color=bearLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
+            if showSmtLabel
+                label.new(bar_index, aH, dQTagBlock + "/Q3", style=label.style_none, textcolor=bearLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
+    if not na(dpv3aL) and not na(dpv3bL)
+        if (aL < dpv3aL and not (dbL < dpv3bL)) or (dbL < dpv3bL and not (aL < dpv3aL))
+            dxeBull := true
+            line.new(dpv3b, dpv3aL, bar_index, aL, color=bullLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
+            if showSmtLabel
+                label.new(bar_index, aL, dQTagBlock + "/Q3", style=label.style_none, textcolor=bullLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
+    // vs prev Q4
+    if not na(dpv4aH) and not na(dpv4bH)
+        if (aH > dpv4aH and not (dbH > dpv4bH)) or (dbH > dpv4bH and not (aH > dpv4aH))
+            dxeBear := true
+            line.new(dpv4b, dpv4aH, bar_index, aH, color=bearLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
+            if showSmtLabel
+                label.new(bar_index, aH, dQTagBlock + "/Q4", style=label.style_none, textcolor=bearLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
+    if not na(dpv4aL) and not na(dpv4bL)
+        if (aL < dpv4aL and not (dbL < dpv4bL)) or (dbL < dpv4bL and not (aL < dpv4aL))
+            dxeBull := true
+            line.new(dpv4b, dpv4aL, bar_index, aL, color=bullLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
+            if showSmtLabel
+                label.new(bar_index, aL, dQTagBlock + "/Q4", style=label.style_none, textcolor=bullLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
+    // vs prev Q5
+    if not na(dpv5aH) and not na(dpv5bH)
+        if (aH > dpv5aH and not (dbH > dpv5bH)) or (dbH > dpv5bH and not (aH > dpv5aH))
+            dxeBear := true
+            line.new(dpv5b, dpv5aH, bar_index, aH, color=bearLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
+            if showSmtLabel
+                label.new(bar_index, aH, dQTagBlock + "/Q5", style=label.style_none, textcolor=bearLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
+    if not na(dpv5aL) and not na(dpv5bL)
+        if (aL < dpv5aL and not (dbL < dpv5bL)) or (dbL < dpv5bL and not (aL < dpv5aL))
+            dxeBull := true
+            line.new(dpv5b, dpv5aL, bar_index, aL, color=bullLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
+            if showSmtLabel
+                label.new(bar_index, aL, dQTagBlock + "/Q5", style=label.style_none, textcolor=bullLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
+    // vs prev Q6
+    if not na(dpv6aH) and not na(dpv6bH)
+        if (aH > dpv6aH and not (dbH > dpv6bH)) or (dbH > dpv6bH and not (aH > dpv6aH))
+            dxeBear := true
+            line.new(dpv6b, dpv6aH, bar_index, aH, color=bearLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
+            if showSmtLabel
+                label.new(bar_index, aH, dQTagBlock + "/Q6", style=label.style_none, textcolor=bearLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
+    if not na(dpv6aL) and not na(dpv6bL)
+        if (aL < dpv6aL and not (dbL < dpv6bL)) or (dbL < dpv6bL and not (aL < dpv6aL))
+            dxeBull := true
+            line.new(dpv6b, dpv6aL, bar_index, aL, color=bullLineColor, width=smtLineWidth, style=mkLineStyle(smtLineStyleI), xloc=xloc.bar_index)
+            if showSmtLabel
+                label.new(bar_index, aL, dQTagBlock + "/Q6", style=label.style_none, textcolor=bullLineColor, size=mkLabelSize(smtLabelSzI), xloc=xloc.bar_index)
+
+
+// Quarter labels (4HR TF)
+if is4H and showQLabel and dBlockOn and dInDisplay and barstate.isconfirmed
+    label.new(bar_index, low, "Q" + str.tostring(dQ), style=label.style_none, textcolor=qLabelColor, size=size.tiny, yloc=yloc.belowbar, xloc=xloc.bar_index)
+
+// Day separator
+if is4H and dNewBlock and showSep and dInDisplay and barstate.isconfirmed
+    line.new(bar_index, high, bar_index, low, extend=extend.both, color=sepColor, style=mkLineStyle(sepStyleI), width=sepWidth, xloc=xloc.bar_index)
+
+
+// ╔════════════════════════════════════════════════════════════════════════════╗
+// ║  PSP (merged across both paths)                                            ║
+// ╚════════════════════════════════════════════════════════════════════════════╝
+
+bool aBull  = aC  > aO
+bool wBBull = wbC > wbO
+bool dBBull = dbC > dbO
+bool wIsPSP = isDaily and wBlockOn and (aBull != wBBull) and wInDisplay
+bool dIsPSP = is4H    and dBlockOn and (aBull != dBBull) and dInDisplay
+bool isPSP  = wIsPSP or dIsPSP
+
+barcolor(showPSP and isPSP ? pspBarColor : na, title="PSP Bar Color")
+bgcolor (showPSP and isPSP ? pspBgColor  : na, title="PSP BG")
+
+
+// ╔════════════════════════════════════════════════════════════════════════════╗
+// ║  ALERTS                                                                    ║
+// ╚════════════════════════════════════════════════════════════════════════════╝
+
+alertcondition(wbull or wcrossBull or wxeBull or dbull or dcrossBull or dxeBull, title="Bull SMT", message="Bull SMT Quarters Auto")
+alertcondition(wbear or wcrossBear or wxeBear or dbear or dcrossBear or dxeBear, title="Bear SMT", message="Bear SMT Quarters Auto")
