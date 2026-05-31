@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SMT Daily Quarters — High-Probability Filters (4HR)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0a0e1a;
+    color: #cfd8dc;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 24px;
+    line-height: 1.5;
+  }
+  h1 { color: #fff; font-size: 22px; margin-bottom: 4px; font-weight: 600; }
+  .subtitle { color: #78909c; font-size: 13px; margin-bottom: 20px; max-width: 880px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(440px, 1fr)); gap: 16px; }
+  .panel {
+    background: #131826;
+    border: 1px solid #1f2a40;
+    border-radius: 8px;
+    padding: 14px 14px 12px;
+    display: flex;
+    flex-direction: column;
+  }
+  .panel.full { grid-column: 1 / -1; }
+  .panel h3 { color: #eceff1; font-size: 14px; font-weight: 600; }
+  .panel .desc { color: #78909c; font-size: 12px; margin: 4px 0 10px; }
+  .panel canvas { width: 100%; height: 260px; display: block; }
+  .panel.full canvas { height: 320px; }
+  .checklist h3 { color: #eceff1; font-size: 14px; margin-bottom: 12px; }
+  .checklist ul { list-style: none; }
+  .checklist li {
+    color: #b0bec5; font-size: 13px; margin-bottom: 8px;
+    padding-left: 24px; position: relative;
+  }
+  .checklist li::before {
+    content: '\2713'; position: absolute; left: 0; top: 0;
+    color: #00e676; font-weight: bold;
+  }
+  .checklist li.disq::before { content: '\2717'; color: #ff1744; }
+  .checklist li strong { color: #eceff1; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .badge {
+    display: inline-block; padding: 2px 7px; border-radius: 3px;
+    font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .b-valid   { background: rgba(0, 230, 118, 0.15); color: #00e676; }
+  .b-invalid { background: rgba(255, 23, 68, 0.15); color: #ff1744; }
+  .b-muted   { background: rgba(176, 190, 197, 0.12); color: #b0bec5; }
+  .b-hp      { background: linear-gradient(90deg, #ffeb3b, #ff9800); color: #0a0e1a; }
+</style>
+</head>
+<body>
+<h1>SMT Daily Quarters — High-Probability Filters (4HR)</h1>
+<p class="subtitle">
+  Visual reference for the four confluence rules layered on top of the SMT Daily Quarters indicator.
+  Apply on a 4HR chart. NQ/YM open 18:00 ET &middot; FX/Metals open 17:00 ET.
+</p>
+
+<div class="grid">
+
+  <div class="panel full">
+    <div class="row"><h3>Concept &mdash; All four rules in one daily transition</h3><span class="badge b-hp">HP&#9733;</span></div>
+    <p class="desc">
+      Prev day (pv1..pv6, net BULL) &rarr; new day. Rule-2 line dropped from pv5 (last red).
+      Rule-3 active window over Q1..Q4. Rule-1 swing low forms in Q3, after the daily open.
+      Rule-4 HP&#9733; on Q3: within-day Bull SMT + cross-day Bull SMT + interaction with the Rule-2 line.
+    </p>
+    <canvas id="cv1"></canvas>
+  </div>
+
+  <div class="panel">
+    <div class="row"><h3>Rule 1 &mdash; Swing AFTER daily open</h3><span class="badge b-valid">Valid</span></div>
+    <p class="desc">
+      3-bar fractal pivot forms inside the new day. Q3.L &lt; Q2.L and &lt; Q4.L &rarr; confirmed swing low.
+      Bar_index of Q3 &gt; Q1 open &rArr; qualifies as today's trigger swing.
+    </p>
+    <canvas id="cv2"></canvas>
+  </div>
+
+  <div class="panel">
+    <div class="row"><h3>Rule 1 &mdash; Swing BEFORE daily open</h3><span class="badge b-invalid">Invalid</span></div>
+    <p class="desc">
+      Pivot inherited from prev day's pv3. Level may still be respected, but it does NOT count as today's
+      trigger swing &mdash; Rule-1 fails.
+    </p>
+    <canvas id="cv3"></canvas>
+  </div>
+
+  <div class="panel">
+    <div class="row"><h3>Rule 2 &mdash; Last opposite candle (bullish bias)</h3><span class="badge b-valid">Bias support &#10003;</span></div>
+    <p class="desc">
+      Prev day net green. Last red 4HR is pv5. Mark pv5.close as horizontal level.
+      Q1..Q3 hold above &rArr; bullish bias confirmed within first 3 quarters.
+    </p>
+    <canvas id="cv4"></canvas>
+  </div>
+
+  <div class="panel">
+    <div class="row"><h3>Rule 2 &mdash; Last opposite candle (bearish bias)</h3><span class="badge b-valid">Bias support &#10003;</span></div>
+    <p class="desc">
+      Prev day net red. Last green 4HR is pv5. Mark pv5.close.
+      Q1..Q3 hold below &rArr; bearish bias confirmed within first 3 quarters.
+    </p>
+    <canvas id="cv5"></canvas>
+  </div>
+
+  <div class="panel full">
+    <div class="row">
+      <h3>Rule 3 &mdash; SMT must form within Q1..Q4</h3>
+      <span class="badge b-valid">Q3 valid</span><span class="badge b-muted">Q5 low-priority</span>
+    </div>
+    <p class="desc">
+      Within-day Bull SMT firing on Q3 (left) is full-color and tagged.
+      Same setup firing on Q5 (right) is muted/dashed and excluded from the HP&#9733; filter.
+    </p>
+    <canvas id="cv6"></canvas>
+  </div>
+
+  <div class="panel full">
+    <div class="row"><h3>Rule 4 &mdash; High-probability triple confluence</h3><span class="badge b-hp">HP&#9733;</span></div>
+    <p class="desc">
+      Q3 fires within-day Bull SMT (vs Q1&cup;Q2 low) AND cross-day Bull SMT
+      (vs prev day's MIN low held by pv4) AND the Q3 close lands back above the Rule-2 last-opposite line.
+      Q3 also qualifies as the Rule-1 swing low &rArr; HP&#9733;.
+    </p>
+    <canvas id="cv7"></canvas>
+  </div>
+
+  <div class="checklist panel full">
+    <h3>Validity checklist &amp; defaults</h3>
+    <ul>
+      <li><strong>Rule 1 &mdash; Swing after daily open.</strong> Trigger swing must form AFTER the latest Q1 open
+        (18:00 ET for NQ/YM, 17:00 ET for FX/metals). Default swing definition = 3-bar fractal pivot
+        (mid bar's H/L beats both immediate neighbors).</li>
+      <li><strong>Rule 2 &mdash; Last opposite candle.</strong> At prev day's Q6 close, scan pv1..pv6 and mark
+        the LAST 4HR whose body color is opposite to the prev day's net direction (close vs open).
+        Mark its CLOSE as a horizontal level. Extend through Q1..Q3 of the new day; expire after Q3 closes.</li>
+      <li><strong>Rule 3 &mdash; Active SMT window.</strong> Within-day and cross-day SMTs fire at full priority
+        only when current Q &le; 4. SMTs on Q5 / Q6 still draw, but are demoted to muted/dashed and
+        excluded from the HP&#9733; filter.</li>
+      <li><strong>Rule 4 &mdash; HP&#9733; trigger.</strong> A within-day or cross-day SMT (Q &le; 4) that lands on
+        or interacts with at least one external key level: cross-day reference (prev day's MAX H / MIN L)
+        OR the Rule-2 last-opposite line OR PDH/PDL.</li>
+      <li class="disq"><strong>Disqualifier.</strong> Q5/Q6 SMTs cannot earn HP&#9733; regardless of
+        external-level overlap.</li>
+      <li class="disq"><strong>Disqualifier.</strong> No qualifying Rule-1 swing on the same side &rArr; no HP&#9733;,
+        even if Rule-3 + Rule-4 overlap (the Rule-1 swing acts as the trigger).</li>
+    </ul>
+  </div>
+
+</div>
+
+<script>
+// ============================================================================
+// HiDPI canvas setup
+// ============================================================================
+function setupCanvas(canvas) {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width  = Math.round(rect.width  * dpr);
+  canvas.height = Math.round(rect.height * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.scale(dpr, dpr);
+  ctx.lineCap  = 'round';
+  ctx.lineJoin = 'round';
+  ctx.font = '11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  return { ctx, w: rect.width, h: rect.height };
+}
+
+// ============================================================================
+// Color palette
+// ============================================================================
+const COL = {
+  bg:        '#131826',
+  text:      '#cfd8dc',
+  muted:     '#78909c',
+  bull:      '#00e676',
+  bear:      '#ff1744',
+  level:     '#ffcc00',
+  rule2:     '#00bcd4',
+  hp:        '#ffeb3b',
+  active:    'rgba(0, 188, 212, 0.06)',
+  divider:   'rgba(255, 255, 255, 0.06)',
+};
+
+// ============================================================================
+// Drawing primitives
+// ============================================================================
+function drawBackground(ctx, w, h) {
+  ctx.fillStyle = COL.bg;
+  ctx.fillRect(0, 0, w, h);
+}
+
+function drawCandle(ctx, x, w, oY, hY, lY, cY, opts) {
+  opts = opts || {};
+  const isBull = cY <= oY; // y is inverted: lower y = higher price
+  const wickColor = opts.wickColor || (isBull ? COL.bull : COL.bear);
+  const bodyColor = opts.bodyColor || (isBull ? COL.bull : COL.bear);
+  const alpha = opts.alpha != null ? opts.alpha : 1;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = wickColor;
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(x + w/2, hY);
+  ctx.lineTo(x + w/2, lY);
+  ctx.stroke();
+  const bodyTop = Math.min(oY, cY);
+  const bodyBot = Math.max(oY, cY);
+  ctx.fillStyle = bodyColor;
+  ctx.fillRect(x, bodyTop, w, Math.max(1.5, bodyBot - bodyTop));
+  if (opts.outline) {
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = opts.outline;
+    ctx.lineWidth = 1.8;
+    ctx.strokeRect(x - 1, bodyTop - 1, w + 2, Math.max(2, bodyBot - bodyTop) + 2);
+  }
+  ctx.restore();
+}
+
+function drawWindowTint(ctx, x1, y1, x2, y2, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(x1, y1, x2 - x1, y2 - y1);
+}
+
+function drawHLine(ctx, x1, x2, y, color, dash) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash(dash || []);
+  ctx.beginPath();
+  ctx.moveTo(x1, y);
+  ctx.lineTo(x2, y);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawVLine(ctx, x, y1, y2, color, dash, width) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width || 1;
+  ctx.setLineDash(dash || []);
+  ctx.beginPath();
+  ctx.moveTo(x, y1);
+  ctx.lineTo(x, y2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawSMTLine(ctx, x1, y1, x2, y2, color, alpha, dash) {
+  ctx.save();
+  ctx.globalAlpha = alpha != null ? alpha : 1;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.setLineDash(dash || []);
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(x1, y1, 3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(x2, y2, 3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawText(ctx, x, y, text, color, opts) {
+  opts = opts || {};
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.font = (opts.bold ? 'bold ' : '') + (opts.size || 11) +
+             'px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  ctx.textAlign    = opts.align    || 'left';
+  ctx.textBaseline = opts.baseline || 'alphabetic';
+  ctx.fillText(text, x, y);
+  ctx.restore();
+}
+
+function drawPivotMarker(ctx, x, y, color, isLow) {
+  ctx.save();
+  ctx.fillStyle   = color;
+  ctx.strokeStyle = COL.bg;
+  ctx.lineWidth   = 1.5;
+  ctx.beginPath();
+  if (isLow) {
+    ctx.moveTo(x, y + 12);
+    ctx.lineTo(x - 5, y + 22);
+    ctx.lineTo(x + 5, y + 22);
+  } else {
+    ctx.moveTo(x, y - 12);
+    ctx.lineTo(x - 5, y - 22);
+    ctx.lineTo(x + 5, y - 22);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawHPBadge(ctx, cx, cy, big) {
+  ctx.save();
+  const text = 'HP\u2605';
+  const fs = big ? 13 : 11;
+  ctx.font = 'bold ' + fs + 'px -apple-system, sans-serif';
+  const tw = ctx.measureText(text).width;
+  const padX = big ? 10 : 6, padY = big ? 5 : 3;
+  const bw = tw + padX*2;
+  const bh = fs + padY*2;
+  const bx = cx - bw/2, by = cy - bh/2;
+  const grad = ctx.createLinearGradient(bx, by, bx + bw, by);
+  grad.addColorStop(0, '#ffeb3b');
+  grad.addColorStop(1, '#ff9800');
+  ctx.fillStyle = grad;
+  if (typeof ctx.roundRect === 'function') {
+    ctx.beginPath();
+    ctx.roundRect(bx, by, bw, bh, 4);
+    ctx.fill();
+  } else {
+    ctx.fillRect(bx, by, bw, bh);
+  }
+  ctx.fillStyle = '#0a0e1a';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, cx, cy);
+  ctx.restore();
+}
+
+// ============================================================================
+// Layout helper
+// ============================================================================
+function makeLayout(w, h, n, opts) {
+  opts = opts || {};
+  const padL = opts.padL != null ? opts.padL : 30;
+  const padR = opts.padR != null ? opts.padR : 100;
+  const padT = opts.padT != null ? opts.padT : 30;
+  const padB = opts.padB != null ? opts.padB : 32;
+  const usableW = w - padL - padR;
+  const slotW = usableW / n;
+  const candleW = Math.max(6, Math.min(slotW * 0.62, 28));
+  const usableH = h - padT - padB;
+  return {
+    padL: padL, padR: padR, padT: padT, padB: padB,
+    slotW: slotW, candleW: candleW,
+    chartTop: padT, chartBot: padT + usableH,
+    chartLeft: padL, chartRight: w - padR,
+    xCenter: function(i) { return padL + slotW * (i + 0.5); },
+    xLeft:   function(i) { return padL + slotW * (i + 0.5) - candleW/2; },
+    yScale: function(p, yMin, yMax) {
+      return padT + (yMax - p) / (yMax - yMin) * usableH;
+    }
+  };
+}
+
+// ============================================================================
+// Panel: Concept (full)
+// ============================================================================
+function renderConcept(canvas) {
+  const setup = setupCanvas(canvas);
+  const ctx = setup.ctx, w = setup.w, h = setup.h;
+  drawBackground(ctx, w, h);
+
+  const L = makeLayout(w, h, 12);
+  const yMin = 46, yMax = 76;
+  const ys = function(p) { return L.yScale(p, yMin, yMax); };
+
+  const data = [
+    [50, 53, 48, 52],
+    [52, 58, 51, 57],
+    [57, 62, 56, 61],
+    [61, 65, 55, 63],
+    [63, 64, 58, 59],
+    [59, 72, 58, 72],
+    [72, 73, 66, 68],
+    [68, 70, 58, 60],
+    [60, 65, 53, 64],
+    [64, 70, 63, 68],
+    [68, 72, 66, 70],
+    [70, 74, 68, 73],
+  ];
+
+  drawWindowTint(ctx, L.xLeft(6) - 4, L.chartTop, L.xLeft(9) + L.candleW + 4, L.chartBot, COL.active);
+
+  const dayOpenX = (L.xCenter(5) + L.xCenter(6)) / 2;
+  drawVLine(ctx, dayOpenX, L.chartTop, L.chartBot, COL.level, [4, 3], 1.5);
+  drawText(ctx, dayOpenX, L.chartTop - 6, 'Daily open (Q1)', COL.level,
+           { align: 'center', size: 10 });
+
+  const r2y = ys(59);
+  drawHLine(ctx, L.xCenter(4) + L.candleW/2 + 2, L.xCenter(8) + L.candleW/2 + 6,
+            r2y, COL.rule2, [5, 3]);
+  drawText(ctx, L.xCenter(8) + L.candleW/2 + 10, r2y + 3,
+           'Rule-2 line (pv5.close)', COL.rule2, { size: 10 });
+
+  const cdy = ys(55);
+  drawHLine(ctx, L.xCenter(3) + L.candleW/2 + 2, L.xCenter(8) + L.candleW/2 + 6,
+            cdy, COL.level, [3, 4]);
+  drawText(ctx, L.xCenter(8) + L.candleW/2 + 10, cdy + 3,
+           'Cross-day MIN (pv4.L)', COL.level, { size: 10 });
+
+  for (let i = 0; i < 12; i++) {
+    const d = data[i];
+    const isHP = i === 8;
+    drawCandle(ctx, L.xLeft(i), L.candleW,
+               ys(d[0]), ys(d[1]), ys(d[2]), ys(d[3]),
+               { outline: isHP ? COL.hp : null });
+    const tag = i < 6 ? 'pv' + (i + 1) : 'Q' + (i - 5);
+    drawText(ctx, L.xCenter(i), L.chartBot + 16, tag,
+             isHP ? COL.hp : COL.muted, { align: 'center', size: 10, bold: isHP });
+  }
+
+  drawSMTLine(ctx, L.xCenter(7), ys(58), L.xCenter(8), ys(53), COL.bull);
+  drawSMTLine(ctx, L.xCenter(3), ys(55), L.xCenter(8), ys(53), COL.bull, 0.85, [4, 3]);
+
+  drawPivotMarker(ctx, L.xCenter(8), ys(53), COL.bull, true);
+  drawText(ctx, L.xCenter(8), ys(53) + 38, 'Rule-1 swing', COL.bull,
+           { align: 'center', size: 10 });
+
+  drawHPBadge(ctx, L.xCenter(8), L.chartTop + 18, true);
+}
+
+// ============================================================================
+// Panel: Rule 1 valid
+// ============================================================================
+function renderRule1Valid(canvas) {
+  const setup = setupCanvas(canvas);
+  const ctx = setup.ctx, w = setup.w, h = setup.h;
+  drawBackground(ctx, w, h);
+
+  const L = makeLayout(w, h, 6, { padR: 30 });
+  const yMin = 46, yMax = 76;
+  const ys = function(p) { return L.yScale(p, yMin, yMax); };
+  const data = [
+    [60, 64, 58, 62],
+    [62, 64, 56, 58],
+    [58, 62, 50, 60],
+    [60, 66, 59, 65],
+    [65, 70, 64, 68],
+    [68, 72, 66, 70],
+  ];
+
+  drawVLine(ctx, L.padL - 4, L.chartTop, L.chartBot, COL.level, [4, 3], 1.5);
+  drawText(ctx, L.padL - 4, L.chartTop - 6, 'Daily open', COL.level,
+           { align: 'center', size: 10 });
+
+  for (let i = 0; i < 6; i++) {
+    const d = data[i];
+    drawCandle(ctx, L.xLeft(i), L.candleW, ys(d[0]), ys(d[1]), ys(d[2]), ys(d[3]));
+    drawText(ctx, L.xCenter(i), L.chartBot + 16, 'Q' + (i + 1), COL.muted,
+             { align: 'center', size: 10 });
+  }
+
+  drawPivotMarker(ctx, L.xCenter(2), ys(50), COL.bull, true);
+  drawText(ctx, L.xCenter(2), ys(50) + 36, '3-bar pivot', COL.bull,
+           { align: 'center', size: 10 });
+  drawText(ctx, L.xCenter(2), ys(50) + 50, 'after open \u2713', COL.bull,
+           { align: 'center', size: 10, bold: true });
+}
+
+// ============================================================================
+// Panel: Rule 1 invalid
+// ============================================================================
+function renderRule1Invalid(canvas) {
+  const setup = setupCanvas(canvas);
+  const ctx = setup.ctx, w = setup.w, h = setup.h;
+  drawBackground(ctx, w, h);
+
+  const L = makeLayout(w, h, 6, { padR: 30 });
+  const yMin = 46, yMax = 76;
+  const ys = function(p) { return L.yScale(p, yMin, yMax); };
+  const data = [
+    [56, 60, 54, 58],
+    [58, 62, 50, 60],
+    [60, 65, 58, 62],
+    [62, 66, 60, 64],
+    [64, 68, 63, 66],
+    [66, 70, 64, 68],
+  ];
+
+  const dayOpenX = (L.xCenter(4) + L.xCenter(5)) / 2;
+  drawVLine(ctx, dayOpenX, L.chartTop, L.chartBot, COL.level, [4, 3], 1.5);
+  drawText(ctx, dayOpenX, L.chartTop - 6, 'Daily open', COL.level,
+           { align: 'center', size: 10 });
+
+  for (let i = 0; i < 6; i++) {
+    const d = data[i];
+    const fade = i < 5;
+    drawCandle(ctx, L.xLeft(i), L.candleW, ys(d[0]), ys(d[1]), ys(d[2]), ys(d[3]),
+               { alpha: fade ? 0.7 : 1 });
+    const tag = i < 5 ? 'pv' + (i + 2) : 'Q1';
+    drawText(ctx, L.xCenter(i), L.chartBot + 16, tag, COL.muted,
+             { align: 'center', size: 10 });
+  }
+
+  drawPivotMarker(ctx, L.xCenter(1), ys(50), COL.muted, true);
+  drawText(ctx, L.xCenter(1), ys(50) + 36, 'pivot in pv3', COL.muted,
+           { align: 'center', size: 10 });
+  drawText(ctx, L.xCenter(1), ys(50) + 50, 'before open \u2717', COL.bear,
+           { align: 'center', size: 10, bold: true });
+}
+
+// ============================================================================
+// Panel: Rule 2 bullish
+// ============================================================================
+function renderRule2Bullish(canvas) {
+  const setup = setupCanvas(canvas);
+  const ctx = setup.ctx, w = setup.w, h = setup.h;
+  drawBackground(ctx, w, h);
+
+  const L = makeLayout(w, h, 9);
+  const yMin = 46, yMax = 76;
+  const ys = function(p) { return L.yScale(p, yMin, yMax); };
+
+  const data = [
+    [50, 53, 49, 52],
+    [52, 56, 51, 55],
+    [55, 60, 54, 58],
+    [58, 63, 56, 62],
+    [62, 64, 58, 59],
+    [59, 70, 58, 68],
+    [68, 70, 65, 67],
+    [67, 69, 62, 65],
+    [65, 70, 63, 68],
+  ];
+
+  const dayOpenX = (L.xCenter(5) + L.xCenter(6)) / 2;
+  drawVLine(ctx, dayOpenX, L.chartTop, L.chartBot, COL.level, [4, 3], 1.5);
+  drawText(ctx, dayOpenX, L.chartTop - 6, 'Daily open', COL.level,
+           { align: 'center', size: 10 });
+
+  const r2y = ys(59);
+  drawHLine(ctx, L.xCenter(4) + L.candleW/2, L.xCenter(8) + L.candleW/2 + 8,
+            r2y, COL.rule2, [5, 3]);
+  drawText(ctx, L.xCenter(8) + L.candleW/2 + 12, r2y + 3,
+           'pv5.close (Rule-2)', COL.rule2, { size: 10 });
+
+  for (let i = 0; i < 9; i++) {
+    const d = data[i];
+    drawCandle(ctx, L.xLeft(i), L.candleW, ys(d[0]), ys(d[1]), ys(d[2]), ys(d[3]));
+    const tag = i < 6 ? 'pv' + (i + 1) : 'Q' + (i - 5);
+    drawText(ctx, L.xCenter(i), L.chartBot + 16, tag, COL.muted,
+             { align: 'center', size: 10 });
+  }
+
+  drawText(ctx, L.xCenter(4), ys(58) + 36, 'last red', COL.bear,
+           { align: 'center', size: 10, bold: true });
+  drawText(ctx, L.xCenter(7), L.chartBot + 32, 'bias holds \u2713', COL.bull,
+           { align: 'center', size: 10, bold: true });
+}
+
+// ============================================================================
+// Panel: Rule 2 bearish
+// ============================================================================
+function renderRule2Bearish(canvas) {
+  const setup = setupCanvas(canvas);
+  const ctx = setup.ctx, w = setup.w, h = setup.h;
+  drawBackground(ctx, w, h);
+
+  const L = makeLayout(w, h, 9);
+  const yMin = 46, yMax = 76;
+  const ys = function(p) { return L.yScale(p, yMin, yMax); };
+
+  const data = [
+    [70, 71, 67, 68],
+    [68, 69, 64, 65],
+    [65, 66, 60, 62],
+    [62, 64, 57, 58],
+    [58, 62, 56, 61],
+    [61, 62, 50, 52],
+    [52, 55, 50, 53],
+    [53, 58, 51, 55],
+    [55, 57, 50, 52],
+  ];
+
+  const dayOpenX = (L.xCenter(5) + L.xCenter(6)) / 2;
+  drawVLine(ctx, dayOpenX, L.chartTop, L.chartBot, COL.level, [4, 3], 1.5);
+  drawText(ctx, dayOpenX, L.chartTop - 6, 'Daily open', COL.level,
+           { align: 'center', size: 10 });
+
+  const r2y = ys(61);
+  drawHLine(ctx, L.xCenter(4) + L.candleW/2, L.xCenter(8) + L.candleW/2 + 8,
+            r2y, COL.rule2, [5, 3]);
+  drawText(ctx, L.xCenter(8) + L.candleW/2 + 12, r2y + 3,
+           'pv5.close (Rule-2)', COL.rule2, { size: 10 });
+
+  for (let i = 0; i < 9; i++) {
+    const d = data[i];
+    drawCandle(ctx, L.xLeft(i), L.candleW, ys(d[0]), ys(d[1]), ys(d[2]), ys(d[3]));
+    const tag = i < 6 ? 'pv' + (i + 1) : 'Q' + (i - 5);
+    drawText(ctx, L.xCenter(i), L.chartBot + 16, tag, COL.muted,
+             { align: 'center', size: 10 });
+  }
+
+  drawText(ctx, L.xCenter(4), ys(56) + 36, 'last green', COL.bull,
+           { align: 'center', size: 10, bold: true });
+  drawText(ctx, L.xCenter(7), L.chartBot + 32, 'bias holds \u2713', COL.bear,
+           { align: 'center', size: 10, bold: true });
+}
+
+// ============================================================================
+// Panel: Rule 3 (split)
+// ============================================================================
+function renderRule3(canvas) {
+  const setup = setupCanvas(canvas);
+  const ctx = setup.ctx, w = setup.w, h = setup.h;
+  drawBackground(ctx, w, h);
+
+  const halfW = w / 2;
+  const padT = 36, padB = 32, padInner = 30;
+  const usableW = halfW - padInner * 2;
+  const slotW = usableW / 6;
+  const candleW = Math.max(6, Math.min(slotW * 0.62, 28));
+  const yMin = 50, yMax = 76;
+  const usableH = h - padT - padB;
+  const ys = function(p) { return padT + (yMax - p) / (yMax - yMin) * usableH; };
+
+  function xC(half, i) { return half * halfW + padInner + slotW * (i + 0.5); }
+  function xL(half, i) { return xC(half, i) - candleW/2; }
+
+  const data1 = [
+    [70, 72, 68, 70],
+    [70, 71, 64, 66],
+    [66, 68, 58, 64],
+    [64, 67, 62, 66],
+    [66, 68, 64, 67],
+    [67, 70, 65, 68],
+  ];
+  drawWindowTint(ctx, xL(0, 0) - 4, padT, xL(0, 3) + candleW + 4, padT + usableH, COL.active);
+  for (let i = 0; i < 6; i++) {
+    const d = data1[i];
+    drawCandle(ctx, xL(0, i), candleW, ys(d[0]), ys(d[1]), ys(d[2]), ys(d[3]));
+    drawText(ctx, xC(0, i), padT + usableH + 16, 'Q' + (i + 1), COL.muted,
+             { align: 'center', size: 10 });
+  }
+  drawSMTLine(ctx, xC(0, 1), ys(64), xC(0, 2), ys(58), COL.bull);
+  drawText(ctx, xC(0, 2), ys(58) + 18, 'Q3 \u2713', COL.bull,
+           { align: 'center', size: 10, bold: true });
+  drawText(ctx, halfW / 2, padT - 14, 'SMT on Q3 \u2014 full priority', COL.bull,
+           { align: 'center', size: 11, bold: true });
+
+  const data2 = [
+    [70, 72, 68, 70],
+    [70, 71, 67, 68],
+    [68, 70, 66, 67],
+    [67, 69, 65, 66],
+    [66, 68, 58, 64],
+    [64, 67, 62, 66],
+  ];
+  drawWindowTint(ctx, xL(1, 0) - 4, padT, xL(1, 3) + candleW + 4, padT + usableH, COL.active);
+  for (let i = 0; i < 6; i++) {
+    const d = data2[i];
+    drawCandle(ctx, xL(1, i), candleW, ys(d[0]), ys(d[1]), ys(d[2]), ys(d[3]),
+               { alpha: 0.55 });
+    drawText(ctx, xC(1, i), padT + usableH + 16, 'Q' + (i + 1), COL.muted,
+             { align: 'center', size: 10 });
+  }
+  drawSMTLine(ctx, xC(1, 3), ys(65), xC(1, 4), ys(58), COL.bull, 0.4, [5, 3]);
+  drawText(ctx, xC(1, 4), ys(58) + 18, 'Q5 muted', COL.muted,
+           { align: 'center', size: 10, bold: true });
+  drawText(ctx, halfW + halfW / 2, padT - 14, 'SMT on Q5 \u2014 low-priority',
+           COL.muted, { align: 'center', size: 11, bold: true });
+
+  drawVLine(ctx, halfW, 12, h - 12, COL.divider, [], 1);
+}
+
+// ============================================================================
+// Panel: Rule 4 HP
+// ============================================================================
+function renderRule4HP(canvas) {
+  const setup = setupCanvas(canvas);
+  const ctx = setup.ctx, w = setup.w, h = setup.h;
+  drawBackground(ctx, w, h);
+
+  const L = makeLayout(w, h, 12, { padR: 130 });
+  const yMin = 46, yMax = 76;
+  const ys = function(p) { return L.yScale(p, yMin, yMax); };
+
+  const data = [
+    [50, 53, 48, 52],
+    [52, 58, 51, 57],
+    [57, 62, 56, 61],
+    [61, 65, 55, 63],
+    [63, 64, 58, 59],
+    [59, 72, 58, 72],
+    [72, 73, 66, 68],
+    [68, 70, 58, 60],
+    [60, 65, 53, 64],
+    [64, 70, 63, 68],
+    [68, 72, 66, 70],
+    [70, 74, 68, 73],
+  ];
+
+  drawWindowTint(ctx, L.xLeft(6) - 4, L.chartTop, L.xLeft(9) + L.candleW + 4,
+                 L.chartBot, COL.active);
+
+  const dayOpenX = (L.xCenter(5) + L.xCenter(6)) / 2;
+  drawVLine(ctx, dayOpenX, L.chartTop, L.chartBot, COL.level, [4, 3], 1.5);
+  drawText(ctx, dayOpenX, L.chartTop - 6, 'Daily open', COL.level,
+           { align: 'center', size: 10 });
+
+  const r2y = ys(59);
+  drawHLine(ctx, L.xCenter(4) + L.candleW/2, L.xCenter(8) + L.candleW/2 + 4,
+            r2y, COL.rule2, [5, 3]);
+  drawText(ctx, L.xCenter(8) + L.candleW/2 + 8, r2y - 4,
+           'Rule-2 line', COL.rule2, { size: 10 });
+  drawText(ctx, L.xCenter(8) + L.candleW/2 + 8, r2y + 10,
+           '(pv5.close)', COL.rule2, { size: 10 });
+
+  const cdy = ys(55);
+  drawHLine(ctx, L.xCenter(3) + L.candleW/2, L.xCenter(8) + L.candleW/2 + 4,
+            cdy, COL.level, [3, 4]);
+  drawText(ctx, L.xCenter(8) + L.candleW/2 + 8, cdy + 3,
+           'pv4.L (cross-day MIN)', COL.level, { size: 10 });
+
+  for (let i = 0; i < 12; i++) {
+    const d = data[i];
+    const isHP = i === 8;
+    drawCandle(ctx, L.xLeft(i), L.candleW, ys(d[0]), ys(d[1]), ys(d[2]), ys(d[3]),
+               { outline: isHP ? COL.hp : null });
+    const tag = i < 6 ? 'pv' + (i + 1) : 'Q' + (i - 5);
+    drawText(ctx, L.xCenter(i), L.chartBot + 16, tag,
+             isHP ? COL.hp : COL.muted, { align: 'center', size: 10, bold: isHP });
+  }
+
+  drawSMTLine(ctx, L.xCenter(7), ys(58), L.xCenter(8), ys(53), COL.bull);
+  drawSMTLine(ctx, L.xCenter(3), ys(55), L.xCenter(8), ys(53), COL.bull, 0.85, [4, 3]);
+
+  drawPivotMarker(ctx, L.xCenter(8), ys(53), COL.bull, true);
+  drawText(ctx, L.xCenter(8), ys(53) + 38, 'Rule-1 swing', COL.bull,
+           { align: 'center', size: 10, bold: true });
+
+  drawHPBadge(ctx, L.xCenter(8), L.chartTop + 22, true);
+
+  let ay = L.chartTop + 50;
+  drawText(ctx, L.chartRight + 10, ay, '+ within-day SMT', COL.bull,
+           { size: 10, bold: true }); ay += 16;
+  drawText(ctx, L.chartRight + 10, ay, '+ cross-day SMT', COL.bull,
+           { size: 10, bold: true }); ay += 16;
+  drawText(ctx, L.chartRight + 10, ay, '+ Rule-2 line', COL.rule2,
+           { size: 10, bold: true }); ay += 16;
+  drawText(ctx, L.chartRight + 10, ay, '+ Rule-1 swing', COL.bull,
+           { size: 10, bold: true }); ay += 18;
+  drawText(ctx, L.chartRight + 10, ay, '= HP\u2605', COL.hp,
+           { size: 12, bold: true });
+}
+
+// ============================================================================
+// Render registry & resize
+// ============================================================================
+const PANELS = [
+  ['cv1', renderConcept],
+  ['cv2', renderRule1Valid],
+  ['cv3', renderRule1Invalid],
+  ['cv4', renderRule2Bullish],
+  ['cv5', renderRule2Bearish],
+  ['cv6', renderRule3],
+  ['cv7', renderRule4HP],
+];
+
+function renderAll() {
+  for (let i = 0; i < PANELS.length; i++) {
+    const c = document.getElementById(PANELS[i][0]);
+    if (c) PANELS[i][1](c);
+  }
+}
+
+renderAll();
+let resizeTimer;
+window.addEventListener('resize', function() {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(renderAll, 100);
+});
+</script>
+</body>
+</html>
