@@ -2,50 +2,694 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Simple Chart Test</title>
-  <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>[Astrophile] - Key Levels</title>
+  <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
   <style>
-    body { margin: 0; padding: 0; }
-    #chart {
-      width: 100%;
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      display: flex;
       height: 100vh;
+      overflow: hidden;
     }
+    #sidebar {
+      width: 280px;
+      background: #16213e;
+      border-right: 1px solid #0f3460;
+      overflow-y: auto;
+      padding: 12px;
+      flex-shrink: 0;
+    }
+    #sidebar h2 {
+      font-size: 14px;
+      color: #00e676;
+      margin-bottom: 10px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #0f3460;
+    }
+    .settings-group {
+      margin-bottom: 14px;
+    }
+    .settings-group summary {
+      font-size: 12px;
+      font-weight: 600;
+      color: #90caf9;
+      cursor: pointer;
+      padding: 4px 0;
+    }
+    .settings-group .field {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 4px 0;
+      font-size: 11px;
+    }
+    .settings-group .field label { flex: 1; color: #bbb; }
+    .settings-group .field input[type="number"] {
+      width: 50px; background: #0f3460; border: 1px solid #1a4080;
+      color: #fff; padding: 2px 4px; border-radius: 3px; font-size: 11px;
+    }
+    .settings-group .field input[type="color"] {
+      width: 30px; height: 20px; border: none; cursor: pointer; background: none;
+    }
+</style>
+
+    .settings-group .field input[type="checkbox"] {
+      width: 14px; height: 14px; cursor: pointer;
+    }
+    .settings-group .field select {
+      background: #0f3460; border: 1px solid #1a4080;
+      color: #fff; padding: 2px 4px; border-radius: 3px; font-size: 11px;
+    }
+    #chart-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    #toolbar {
+      background: #16213e;
+      border-bottom: 1px solid #0f3460;
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 12px;
+    }
+    #toolbar .title {
+      font-weight: 700;
+      color: #00e676;
+      font-size: 14px;
+    }
+    #toolbar .info { color: #888; }
+    #toolbar button {
+      background: #0f3460;
+      border: 1px solid #1a4080;
+      color: #90caf9;
+      padding: 4px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px;
+    }
+    #toolbar button:hover { background: #1a4080; }
+    #toolbar button.active { background: #00e676; color: #000; }
+    #chart { flex: 1; }
+    .alert-log {
+      position: fixed;
+      bottom: 10px;
+      right: 10px;
+      max-width: 300px;
+      z-index: 1000;
+    }
+    .alert-item {
+      background: #16213e;
+      border: 1px solid #0f3460;
+      border-left: 3px solid #ffcc00;
+      padding: 6px 10px;
+      margin-top: 4px;
+      font-size: 11px;
+      border-radius: 4px;
+      animation: fadeIn 0.3s;
+    }
+    .alert-item.bull { border-left-color: #00e676; }
+    .alert-item.bear { border-left-color: #ff1744; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
   </style>
 </head>
 <body>
 
-<div id="chart"></div>
+<!-- SIDEBAR SETTINGS -->
+<div id="sidebar">
+  <h2>⚙ [Astrophile] Key Levels</h2>
+
+  <details class="settings-group" open>
+    <summary>Display</summary>
+    <div class="field"><label>Show Last N Days</label><input type="number" id="displayDays" value="3" min="1" max="20"></div>
+  </details>
+
+  <details class="settings-group" open>
+    <summary>Bullish FVG</summary>
+    <div class="field"><label>Show</label><input type="checkbox" id="showBullFVG" checked></div>
+    <div class="field"><label>Fill Color</label><input type="color" id="bullFVGColor" value="#00e676"></div>
+    <div class="field"><label>Border Color</label><input type="color" id="bullBorderColor" value="#00e676"></div>
+    <div class="field"><label>Border Width</label><input type="number" id="bullBorderWidth" value="1" min="0" max="3"></div>
+  </details>
+
+  <details class="settings-group" open>
+    <summary>Bearish FVG</summary>
+    <div class="field"><label>Show</label><input type="checkbox" id="showBearFVG" checked></div>
+    <div class="field"><label>Fill Color</label><input type="color" id="bearFVGColor" value="#ff1744"></div>
+    <div class="field"><label>Border Color</label><input type="color" id="bearBorderColor" value="#ff1744"></div>
+    <div class="field"><label>Border Width</label><input type="number" id="bearBorderWidth" value="1" min="0" max="3"></div>
+  </details>
+
+  <details class="settings-group">
+    <summary>FVG Box</summary>
+    <div class="field"><label>Extend (bars right)</label><input type="number" id="boxExtend" value="5" min="1" max="20"></div>
+  </details>
+
+  <details class="settings-group" open>
+    <summary>Swing Detection</summary>
+    <div class="field"><label>Strength (bars each side)</label><input type="number" id="swingStrength" value="2" min="1" max="10"></div>
+  </details>
+
+  <details class="settings-group">
+    <summary>Swing High</summary>
+    <div class="field"><label>Show</label><input type="checkbox" id="showSwingH" checked></div>
+    <div class="field"><label>Color</label><input type="color" id="swingHColor" value="#ff1744"></div>
+    <div class="field"><label>Width</label><input type="number" id="swingHWidth" value="1" min="1" max="5"></div>
+    <div class="field"><label>Style</label><select id="swingHStyle"><option>Solid</option><option>Dashed</option><option>Dotted</option></select></div>
+    <div class="field"><label>Extend (bars)</label><input type="number" id="swingHExtend" value="5" min="1" max="20"></div>
+  </details>
+
+  <details class="settings-group">
+    <summary>Swing Low</summary>
+    <div class="field"><label>Show</label><input type="checkbox" id="showSwingL" checked></div>
+    <div class="field"><label>Color</label><input type="color" id="swingLColor" value="#00e676"></div>
+    <div class="field"><label>Width</label><input type="number" id="swingLWidth" value="1" min="1" max="5"></div>
+    <div class="field"><label>Style</label><select id="swingLStyle"><option>Solid</option><option>Dashed</option><option>Dotted</option></select></div>
+    <div class="field"><label>Extend (bars)</label><input type="number" id="swingLExtend" value="5" min="1" max="20"></div>
+  </details>
+
+  <details class="settings-group">
+    <summary>C2 at Key Level</summary>
+    <div class="field"><label>Show</label><input type="checkbox" id="showC2KL" checked></div>
+    <div class="field"><label>Bull Color</label><input type="color" id="c2klBullColor" value="#ffcc00"></div>
+    <div class="field"><label>Bear Color</label><input type="color" id="c2klBearColor" value="#ffcc00"></div>
+    <div class="field"><label>Line Width</label><input type="number" id="c2klLineWidth" value="2" min="1" max="5"></div>
+    <div class="field"><label>Style</label><select id="c2klLineStyle"><option>Solid</option><option>Dashed</option><option>Dotted</option></select></div>
+    <div class="field"><label>Extra Bars</label><input type="number" id="c2klExtraBars" value="2" min="0" max="5"></div>
+  </details>
+
+  <div style="margin-top:14px; padding-top:10px; border-top:1px solid #0f3460;">
+    <button onclick="applySettings()" style="width:100%;padding:8px;background:#00e676;color:#000;border:none;border-radius:4px;cursor:pointer;font-weight:600;">Apply Settings</button>
+  </div>
+</div>
+
+<!-- CHART AREA -->
+<div id="chart-container">
+  <div id="toolbar">
+    <span class="title">[Astrophile] Key Levels</span>
+    <span class="info" id="symbolInfo">Loading...</span>
+    <button onclick="loadSymbol('BTCUSDT')">BTC</button>
+    <button onclick="loadSymbol('ETHUSDT')">ETH</button>
+    <button onclick="loadSymbol('SOLUSDT')">SOL</button>
+    <input type="text" id="symbolInput" placeholder="Symbol..." style="background:#0f3460;border:1px solid #1a4080;color:#fff;padding:4px 8px;border-radius:4px;width:90px;font-size:11px;">
+    <button onclick="loadSymbol(document.getElementById('symbolInput').value.toUpperCase())">Go</button>
+    <span style="margin-left:auto;">
+      <button class="active" onclick="setTimeframe('15m',this)">15m</button>
+      <button onclick="setTimeframe('1h',this)">1H</button>
+      <button onclick="setTimeframe('4h',this)">4H</button>
+      <button onclick="setTimeframe('1d',this)">1D</button>
+    </span>
+  </div>
+  <div id="chart"></div>
+</div>
+
+<div class="alert-log" id="alertLog"></div>
 
 <script>
-  const chart = LightweightCharts.createChart(document.getElementById('chart'), {
-    width: window.innerWidth,
-    height: window.innerHeight,
+// ═══════════════════════════════════════════════════════════════════════════════
+// GLOBAL STATE
+// ═══════════════════════════════════════════════════════════════════════════════
+let chart, candleSeries;
+let currentSymbol = 'BTCUSDT';
+let currentTimeframe = '15m';
+let ohlcData = [];
+let markers = [];
+
+// Drawing primitive arrays
+let drawnPrimitives = []; // track all series for cleanup
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SETTINGS
+// ═══════════════════════════════════════════════════════════════════════════════
+function getSettings() {
+  return {
+    displayDays: parseInt(document.getElementById('displayDays').value),
+    showBullFVG: document.getElementById('showBullFVG').checked,
+    bullFVGColor: document.getElementById('bullFVGColor').value,
+    bullBorderColor: document.getElementById('bullBorderColor').value,
+    bullBorderWidth: parseInt(document.getElementById('bullBorderWidth').value),
+    showBearFVG: document.getElementById('showBearFVG').checked,
+    bearFVGColor: document.getElementById('bearFVGColor').value,
+    bearBorderColor: document.getElementById('bearBorderColor').value,
+    bearBorderWidth: parseInt(document.getElementById('bearBorderWidth').value),
+    boxExtend: parseInt(document.getElementById('boxExtend').value),
+    swingStrength: parseInt(document.getElementById('swingStrength').value),
+    showSwingH: document.getElementById('showSwingH').checked,
+    swingHColor: document.getElementById('swingHColor').value,
+    swingHWidth: parseInt(document.getElementById('swingHWidth').value),
+    swingHStyle: document.getElementById('swingHStyle').value,
+    swingHExtend: parseInt(document.getElementById('swingHExtend').value),
+    showSwingL: document.getElementById('showSwingL').checked,
+    swingLColor: document.getElementById('swingLColor').value,
+    swingLWidth: parseInt(document.getElementById('swingLWidth').value),
+    swingLStyle: document.getElementById('swingLStyle').value,
+    swingLExtend: parseInt(document.getElementById('swingLExtend').value),
+    showC2KL: document.getElementById('showC2KL').checked,
+    c2klBullColor: document.getElementById('c2klBullColor').value,
+    c2klBearColor: document.getElementById('c2klBearColor').value,
+    c2klLineWidth: parseInt(document.getElementById('c2klLineWidth').value),
+    c2klLineStyle: document.getElementById('c2klLineStyle').value,
+    c2klExtraBars: parseInt(document.getElementById('c2klExtraBars').value),
+  };
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CHART INITIALIZATION
+// ═══════════════════════════════════════════════════════════════════════════════
+function initChart() {
+  const container = document.getElementById('chart');
+  chart = LightweightCharts.createChart(container, {
+    width: container.clientWidth,
+    height: container.clientHeight,
     layout: {
-      background: { color: '#FFFFFF' },
-      textColor: '#000',
+      background: { type: 'solid', color: '#1a1a2e' },
+      textColor: '#d1d4dc',
     },
     grid: {
-      vertLines: { color: '#eee' },
-      horzLines: { color: '#eee' },
+      vertLines: { color: '#1e2a4a' },
+      horzLines: { color: '#1e2a4a' },
     },
+    crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+    rightPriceScale: { borderColor: '#0f3460' },
     timeScale: {
+      borderColor: '#0f3460',
       timeVisible: true,
-      secondsVisible: true,
+      secondsVisible: false,
     },
   });
 
-  const lineSeries = chart.addLineSeries();
+  candleSeries = chart.addCandlestickSeries({
+    upColor: '#00e676',
+    downColor: '#ff1744',
+    borderDownColor: '#ff1744',
+    borderUpColor: '#00e676',
+    wickDownColor: '#ff1744',
+    wickUpColor: '#00e676',
+  });
 
-  // Example hard-coded data
-  lineSeries.setData([
-    { time: '2024-04-20', value: 500 },
-    { time: '2024-04-21', value: 510 },
-    { time: '2024-04-22', value: 490 },
-    { time: '2024-04-23', value: 520 },
-    { time: '2024-04-24', value: 530 },
-    { time: '2024-04-25', value: 540 },
-  ]);
+  window.addEventListener('resize', () => {
+    chart.applyOptions({ width: container.clientWidth, height: container.clientHeight });
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DATA FETCHING (Binance API)
+// ═══════════════════════════════════════════════════════════════════════════════
+async function fetchData(symbol, interval, limit = 500) {
+  const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`Binance API error: ${resp.status}`);
+  const raw = await resp.json();
+  return raw.map(k => ({
+    time: Math.floor(k[0] / 1000),
+    open: parseFloat(k[1]),
+    high: parseFloat(k[2]),
+    low: parseFloat(k[3]),
+    close: parseFloat(k[4]),
+    volume: parseFloat(k[5]),
+  }));
+}
+
+async function loadSymbol(symbol) {
+  if (!symbol) return;
+  currentSymbol = symbol;
+  document.getElementById('symbolInfo').textContent = `${symbol} · ${currentTimeframe}`;
+  try {
+    ohlcData = await fetchData(symbol, currentTimeframe, 500);
+    renderAll();
+  } catch (e) {
+    document.getElementById('symbolInfo').textContent = `Error: ${e.message}`;
+  }
+}
+
+function setTimeframe(tf, btn) {
+  currentTimeframe = tf;
+  document.querySelectorAll('#toolbar button').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  loadSymbol(currentSymbol);
+}
+
+function applySettings() {
+  renderAll();
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// HELPER: Color with alpha for lightweight-charts
+// ═══════════════════════════════════════════════════════════════════════════════
+function hexToRGBA(hex, alpha) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// INDICATOR LOGIC
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function detectFVGs(data) {
+  const bullish = [];
+  const bearish = [];
+  for (let i = 2; i < data.length; i++) {
+    const top = data[i].low;
+    const bot = data[i - 2].high;
+    if (top > bot) {
+      bullish.push({ index: i, top, bot, barIndex: i - 1 });
+    }
+    const bTop = data[i - 2].low;
+    const bBot = data[i].high;
+    if (bBot < bTop) {
+      bearish.push({ index: i, top: bTop, bot: bBot, barIndex: i - 1 });
+    }
+  }
+  return { bullish, bearish };
+}
+
+function detectSwings(data, strength) {
+  const highs = [];
+  const lows = [];
+  for (let i = strength; i < data.length - strength; i++) {
+    let isHigh = true;
+    let isLow = true;
+    for (let j = 1; j <= strength; j++) {
+      if (data[i].high <= data[i - j].high || data[i].high <= data[i + j].high) isHigh = false;
+      if (data[i].low >= data[i - j].low || data[i].low >= data[i + j].low) isLow = false;
+    }
+    if (isHigh) highs.push({ index: i, value: data[i].high, time: data[i].time });
+    if (isLow) lows.push({ index: i, value: data[i].low, time: data[i].time });
+  }
+  return { highs, lows };
+}
+
+function detectC2Sweeps(data, swingHighs, swingLows, bullFVGs, bearFVGs) {
+  const sweeps = [];
+  for (let i = 1; i < data.length; i++) {
+    const bar = data[i];
+    const prevBar = data[i - 1];
+
+    // Bullish C2: low < prev low AND close > prev low
+    const c2BullRaw = (bar.low < prevBar.low) && (bar.close > prevBar.low);
+    // Bearish C2: high > prev high AND close < prev high
+    const c2BearRaw = (bar.high > prevBar.high) && (bar.close < prevBar.high);
+
+    if (c2BullRaw) {
+      let atSwing = false, sweptSwingIdx = -1;
+      for (let s = swingLows.length - 1; s >= 0; s--) {
+        if (swingLows[s].index < i && bar.low < swingLows[s].value) {
+          atSwing = true;
+          sweptSwingIdx = s;
+          break;
+        }
+      }
+      let atFVG = false, sweptFVGIdx = -1;
+      for (let f = bullFVGs.length - 1; f >= 0; f--) {
+        if (bullFVGs[f].index < i && bar.low <= bullFVGs[f].top && bar.low >= bullFVGs[f].bot) {
+          atFVG = true;
+          sweptFVGIdx = f;
+          break;
+        }
+      }
+      if (atSwing || atFVG) {
+        sweeps.push({ index: i, type: 'bull', level: prevBar.low, time: bar.time, sweptSwingIdx, sweptFVGIdx, atSwing, atFVG });
+      }
+    }
+
+    if (c2BearRaw) {
+      let atSwing = false, sweptSwingIdx = -1;
+      for (let s = swingHighs.length - 1; s >= 0; s--) {
+        if (swingHighs[s].index < i && bar.high > swingHighs[s].value) {
+          atSwing = true;
+          sweptSwingIdx = s;
+          break;
+        }
+      }
+      let atFVG = false, sweptFVGIdx = -1;
+      for (let f = bearFVGs.length - 1; f >= 0; f--) {
+        if (bearFVGs[f].index < i && bar.high >= bearFVGs[f].bot && bar.high <= bearFVGs[f].top) {
+          atFVG = true;
+          sweptFVGIdx = f;
+          break;
+        }
+      }
+      if (atSwing || atFVG) {
+        sweeps.push({ index: i, type: 'bear', level: prevBar.high, time: bar.time, sweptSwingIdx, sweptFVGIdx, atSwing, atFVG });
+      }
+    }
+  }
+  return sweeps;
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// RENDERING
+// ═══════════════════════════════════════════════════════════════════════════════
+function clearDrawings() {
+  drawnPrimitives.forEach(s => {
+    try { chart.removeSeries(s); } catch(e) {}
+  });
+  drawnPrimitives = [];
+  markers = [];
+}
+
+function renderAll() {
+  if (!ohlcData.length) return;
+  clearDrawings();
+
+  const s = getSettings();
+  const data = ohlcData;
+
+  // Display filter: last N days worth of bars
+  const tfSeconds = getTimeframeSeconds(currentTimeframe);
+  const barsPerDay = Math.round(86400 / tfSeconds);
+  const displayBars = s.displayDays * barsPerDay;
+  const startIdx = Math.max(0, data.length - displayBars);
+  const displayData = data.slice(startIdx);
+
+  // Set candle data
+  candleSeries.setData(displayData);
+
+  // Detect indicators on FULL data for lookback, but draw only in display range
+  const { bullish: bullFVGs, bearish: bearFVGs } = detectFVGs(data);
+  const { highs: swingHighs, lows: swingLows } = detectSwings(data, s.swingStrength);
+  const sweeps = detectC2Sweeps(data, swingHighs, swingLows, bullFVGs, bearFVGs);
+
+  // Track which swings/FVGs are swept
+  const sweptSwingLows = new Set();
+  const sweptSwingHighs = new Set();
+  const sweptBullFVGs = new Set();
+  const sweptBearFVGs = new Set();
+  sweeps.forEach(sw => {
+    if (sw.type === 'bull' && sw.atSwing) sweptSwingLows.add(sw.sweptSwingIdx);
+    if (sw.type === 'bear' && sw.atSwing) sweptSwingHighs.add(sw.sweptSwingIdx);
+    if (sw.type === 'bull' && sw.atFVG) sweptBullFVGs.add(sw.sweptFVGIdx);
+    if (sw.type === 'bear' && sw.atFVG) sweptBearFVGs.add(sw.sweptFVGIdx);
+  });
+
+  // ─── DRAW FVG BOXES (as area-between using line series pairs) ───────────
+  if (s.showBullFVG) {
+    bullFVGs.forEach((fvg, idx) => {
+      if (fvg.index < startIdx) return;
+      const swept = sweptBullFVGs.has(idx);
+      const startTime = data[fvg.barIndex].time;
+      const endBarIdx = Math.min(fvg.barIndex + s.boxExtend, data.length - 1);
+      const endTime = data[endBarIdx].time;
+
+      const fillColor = swept ? hexToRGBA(s.bullFVGColor, 0.5) : hexToRGBA(s.bullFVGColor, 0.2);
+      const borderColor = swept ? '#ffcc00' : s.bullBorderColor;
+
+      // Top line
+      const topLine = chart.addLineSeries({
+        color: borderColor,
+        lineWidth: swept ? 2 : s.bullBorderWidth,
+        lineStyle: 0,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+      });
+      topLine.setData([{ time: startTime, value: fvg.top }, { time: endTime, value: fvg.top }]);
+      drawnPrimitives.push(topLine);
+
+      // Bottom line
+      const botLine = chart.addLineSeries({
+        color: borderColor,
+        lineWidth: swept ? 2 : s.bullBorderWidth,
+        lineStyle: 0,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+      });
+      botLine.setData([{ time: startTime, value: fvg.bot }, { time: endTime, value: fvg.bot }]);
+      drawnPrimitives.push(botLine);
+    });
+  }
+
+  if (s.showBearFVG) {
+    bearFVGs.forEach((fvg, idx) => {
+      if (fvg.index < startIdx) return;
+      const swept = sweptBearFVGs.has(idx);
+      const startTime = data[fvg.barIndex].time;
+      const endBarIdx = Math.min(fvg.barIndex + s.boxExtend, data.length - 1);
+      const endTime = data[endBarIdx].time;
+
+      const borderColor = swept ? '#ffcc00' : s.bearBorderColor;
+
+      const topLine = chart.addLineSeries({
+        color: borderColor,
+        lineWidth: swept ? 2 : s.bearBorderWidth,
+        lineStyle: 0,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+      });
+      topLine.setData([{ time: startTime, value: fvg.top }, { time: endTime, value: fvg.top }]);
+      drawnPrimitives.push(topLine);
+
+      const botLine = chart.addLineSeries({
+        color: borderColor,
+        lineWidth: swept ? 2 : s.bearBorderWidth,
+        lineStyle: 0,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+      });
+      botLine.setData([{ time: startTime, value: fvg.bot }, { time: endTime, value: fvg.bot }]);
+      drawnPrimitives.push(botLine);
+    });
+  }
+
+
+  // ─── DRAW SWING HIGHS ──────────────────────────────────────────────────────
+  if (s.showSwingH) {
+    swingHighs.forEach((sw, idx) => {
+      if (sw.index < startIdx) return;
+      const swept = sweptSwingHighs.has(idx);
+      const startTime = data[sw.index].time;
+      const endBarIdx = Math.min(sw.index + s.swingHExtend, data.length - 1);
+      const endTime = data[endBarIdx].time;
+
+      const lineStyleVal = swept ? 2 : getLineStyle(s.swingHStyle); // dashed if swept
+
+      const swLine = chart.addLineSeries({
+        color: s.swingHColor,
+        lineWidth: s.swingHWidth,
+        lineStyle: lineStyleVal,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+      });
+      swLine.setData([{ time: startTime, value: sw.value }, { time: endTime, value: sw.value }]);
+      drawnPrimitives.push(swLine);
+    });
+  }
+
+  // ─── DRAW SWING LOWS ───────────────────────────────────────────────────────
+  if (s.showSwingL) {
+    swingLows.forEach((sw, idx) => {
+      if (sw.index < startIdx) return;
+      const swept = sweptSwingLows.has(idx);
+      const startTime = data[sw.index].time;
+      const endBarIdx = Math.min(sw.index + s.swingLExtend, data.length - 1);
+      const endTime = data[endBarIdx].time;
+
+      const lineStyleVal = swept ? 2 : getLineStyle(s.swingLStyle); // dashed if swept
+
+      const swLine = chart.addLineSeries({
+        color: s.swingLColor,
+        lineWidth: s.swingLWidth,
+        lineStyle: lineStyleVal,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+      });
+      swLine.setData([{ time: startTime, value: sw.value }, { time: endTime, value: sw.value }]);
+      drawnPrimitives.push(swLine);
+    });
+  }
+
+  // ─── DRAW C2 SWEEP LINES ──────────────────────────────────────────────────
+  if (s.showC2KL) {
+    sweeps.forEach(sw => {
+      if (sw.index < startIdx) return;
+      const startTime = data[Math.max(sw.index - 1, 0)].time;
+      const endBarIdx = Math.min(sw.index + s.c2klExtraBars, data.length - 1);
+      const endTime = data[endBarIdx].time;
+
+      const color = sw.type === 'bull' ? s.c2klBullColor : s.c2klBearColor;
+
+      const c2Line = chart.addLineSeries({
+        color: color,
+        lineWidth: s.c2klLineWidth,
+        lineStyle: getLineStyle(s.c2klLineStyle),
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+      });
+      c2Line.setData([{ time: startTime, value: sw.level }, { time: endTime, value: sw.level }]);
+      drawnPrimitives.push(c2Line);
+
+      // Add marker
+      markers.push({
+        time: data[sw.index].time,
+        position: sw.type === 'bull' ? 'belowBar' : 'aboveBar',
+        color: color,
+        shape: sw.type === 'bull' ? 'arrowUp' : 'arrowDown',
+        text: 'C2',
+      });
+    });
+  }
+
+  // Apply markers to candle series
+  if (markers.length > 0) {
+    markers.sort((a, b) => a.time - b.time);
+    candleSeries.setMarkers(markers);
+  }
+
+  chart.timeScale().fitContent();
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// UTILITIES
+// ═══════════════════════════════════════════════════════════════════════════════
+function getLineStyle(style) {
+  switch (style) {
+    case 'Dashed': return 2;
+    case 'Dotted': return 3;
+    default: return 0;
+  }
+}
+
+function getTimeframeSeconds(tf) {
+  const map = { '1m': 60, '3m': 180, '5m': 300, '15m': 900, '30m': 1800, '1h': 3600, '4h': 14400, '1d': 86400 };
+  return map[tf] || 900;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ALERT NOTIFICATIONS
+// ═══════════════════════════════════════════════════════════════════════════════
+function showAlert(msg, type) {
+  const log = document.getElementById('alertLog');
+  const el = document.createElement('div');
+  el.className = `alert-item ${type}`;
+  el.textContent = msg;
+  log.appendChild(el);
+  setTimeout(() => el.remove(), 5000);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// INITIALIZATION
+// ═══════════════════════════════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+  initChart();
+  loadSymbol('BTCUSDT');
+});
 </script>
-
 </body>
 </html>
