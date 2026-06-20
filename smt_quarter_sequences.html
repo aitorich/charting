@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SMT Quarter Sequences (4HR) - NQ/YM</title>
+  <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #0a0a0f;
+      color: #e0e0e0;
+      overflow: hidden;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 20px;
+      background: #111118;
+      border-bottom: 1px solid #2a2a3a;
+    }
+    .header h1 {
+      font-size: 16px;
+      color: #ffffff;
+      font-weight: 600;
+    }
+    .header .subtitle {
+      font-size: 12px;
+      color: #888;
+      margin-left: 10px;
+    }
+    .controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .controls select, .controls button {
+      background: #1a1a2e;
+      border: 1px solid #333;
+      color: #e0e0e0;
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .controls button:hover {
+      background: #2a2a4e;
+    }
+    .controls button.active {
+      background: #3a3aff;
+      border-color: #5a5aff;
+    }
+    .main-container {
+      display: flex;
+      height: calc(100vh - 50px);
+    }
+    .charts-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    .chart-wrapper {
+      flex: 1;
+      position: relative;
+      border-bottom: 1px solid #2a2a3a;
+    }
+    .chart-wrapper:last-child {
+      border-bottom: none;
+    }
+    .chart-label {
+      position: absolute;
+      top: 8px;
+      left: 12px;
+      z-index: 10;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 3px;
+      background: rgba(0,0,0,0.7);
+    }
+    .chart-label.nq { color: #4ecdc4; }
+    .chart-label.ym { color: #ff6b6b; }
+    .side-panel {
+      width: 300px;
+      background: #111118;
+      border-left: 1px solid #2a2a3a;
+      overflow-y: auto;
+      padding: 15px;
+    }
+    .panel-section {
+      margin-bottom: 20px;
+    }
+    .panel-section h3 {
+      font-size: 13px;
+      color: #aaa;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 10px;
+      padding-bottom: 5px;
+      border-bottom: 1px solid #2a2a3a;
+    }
+    .smt-event {
+      padding: 8px 10px;
+      margin-bottom: 6px;
+      border-radius: 4px;
+      font-size: 12px;
+      border-left: 3px solid;
+    }
+    .smt-event.bullish {
+      background: rgba(46, 204, 113, 0.1);
+      border-left-color: #2ecc71;
+    }
+    .smt-event.bearish {
+      background: rgba(231, 76, 60, 0.1);
+      border-left-color: #e74c3c;
+    }
+    .smt-event .quarter-tag {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: bold;
+      margin-right: 5px;
+    }
+    .smt-event.bullish .quarter-tag { background: #2ecc71; color: #000; }
+    .smt-event.bearish .quarter-tag { background: #e74c3c; color: #fff; }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 4px;
+      font-size: 11px;
+    }
+    .stats-grid .header-cell {
+      font-weight: bold;
+      color: #888;
+      padding: 4px;
+      text-align: center;
+    }
+    .stats-grid .cell {
+      padding: 4px;
+      text-align: center;
+      background: #1a1a2e;
+      border-radius: 3px;
+    }
+    .stats-grid .cell.bull { color: #2ecc71; }
+    .stats-grid .cell.bear { color: #e74c3c; }
+    .legend {
+      font-size: 11px;
+      color: #888;
+      margin-top: 15px;
+      line-height: 1.6;
+    }
+    .legend strong { color: #ccc; }
+    .no-data {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: #555;
+      font-size: 14px;
+    }
+    /* 4HR block separators */
+    .quarter-marker {
+      position: absolute;
+      bottom: 2px;
+      font-size: 9px;
+      color: #555;
+      z-index: 5;
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div style="display:flex;align-items:center;">
+    <h1>SMT Quarter Sequences</h1>
+    <span class="subtitle">4HR HTF Candle Quarters | NQ vs YM</span>
+  </div>
+  <div class="controls">
+    <select id="dataRange">
+      <option value="5">Last 5 Days</option>
+      <option value="10" selected>Last 10 Days</option>
+      <option value="20">Last 20 Days</option>
+      <option value="30">Last 30 Days</option>
+    </select>
+    <button id="btnGenerate" class="active">Generate Sample Data</button>
+  </div>
+</div>
+
+<div class="main-container">
+  <div class="charts-panel">
+    <div class="chart-wrapper">
+      <div class="chart-label nq">NQ (Nasdaq Futures)</div>
+      <div id="chartNQ"></div>
+    </div>
+    <div class="chart-wrapper">
+      <div class="chart-label ym">YM (Dow Futures)</div>
+      <div id="chartYM"></div>
+    </div>
+  </div>
+  <div class="side-panel">
+    <div class="panel-section">
+      <h3>Quarter Statistics</h3>
+      <div class="stats-grid" id="statsGrid">
+        <div class="header-cell">Quarter</div>
+        <div class="header-cell" style="color:#2ecc71;">Bull</div>
+        <div class="header-cell" style="color:#e74c3c;">Bear</div>
+      </div>
+    </div>
+    <div class="panel-section">
+      <h3>SMT Events Log</h3>
+      <div id="eventsLog"></div>
+    </div>
+    <div class="panel-section">
+      <h3>Legend</h3>
+      <div class="legend">
+        <strong>Bullish SMT:</strong> One asset makes a lower low, the other fails to confirm → potential reversal up.<br><br>
+        <strong>Bearish SMT:</strong> One asset makes a higher high, the other fails to confirm → potential reversal down.<br><br>
+        <strong>Quarters:</strong> Each 4HR candle is divided into 4 × 1HR candles (Q1-Q4). Divergence is compared quarter-to-quarter within the same 4HR block.
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── CHART SETUP ──────────────────────────────────────────────────────────────
+const chartHeight = (window.innerHeight - 50) / 2;
+const chartWidth = window.innerWidth - 300;
+
+const commonOptions = {
+  width: chartWidth,
+  height: chartHeight,
+  layout: {
+    background: { color: '#0a0a0f' },
+    textColor: '#888',
+  },
+  grid: {
+    vertLines: { color: '#1a1a2a' },
+    horzLines: { color: '#1a1a2a' },
+  },
+  timeScale: {
+    timeVisible: true,
+    secondsVisible: false,
+    borderColor: '#2a2a3a',
+  },
+  rightPriceScale: {
+    borderColor: '#2a2a3a',
+  },
+  crosshair: {
+    mode: LightweightCharts.CrosshairMode.Normal,
+  },
+};
+
+const chartNQ = LightweightCharts.createChart(document.getElementById('chartNQ'), commonOptions);
+const chartYM = LightweightCharts.createChart(document.getElementById('chartYM'), commonOptions);
+
+const nqSeries = chartNQ.addCandlestickSeries({
+  upColor: '#4ecdc4',
+  downColor: '#1a936f',
+  borderUpColor: '#4ecdc4',
+  borderDownColor: '#1a936f',
+  wickUpColor: '#4ecdc4',
+  wickDownColor: '#1a936f',
+});
+
+const ymSeries = chartYM.addCandlestickSeries({
+  upColor: '#ff6b6b',
+  downColor: '#c0392b',
+  borderUpColor: '#ff6b6b',
+  borderDownColor: '#c0392b',
+  wickUpColor: '#ff6b6b',
+  wickDownColor: '#c0392b',
+});
+
+// Sync crosshairs
+chartNQ.subscribeCrosshairMove((param) => {
+  if (param.time) {
+    chartYM.setCrosshairPosition(undefined, undefined, ymSeries);
+  }
+});
+
+// ─── SAMPLE DATA GENERATION ───────────────────────────────────────────────────
+function generateCorrelatedOHLC(days, basePrice, volatility, correlation) {
+  const data = [];
+  let price = basePrice;
+  const barsPerDay = 24; // 1H bars
+  const startDate = new Date('2025-01-06T00:00:00Z'); // Start on a Monday
+
+  for (let d = 0; d < days; d++) {
+    const currentDay = new Date(startDate);
+    currentDay.setDate(startDate.getDate() + d);
+    
+    // Skip weekends
+    const dayOfWeek = currentDay.getDay();
+    if (dayOfWeek === 0 || dayOfWeek === 6) continue;
+
+    for (let h = 0; h < barsPerDay; h++) {
+      const timestamp = Math.floor(currentDay.getTime() / 1000) + h * 3600;
+      
+      const trend = Math.sin(d / 5) * volatility * 0.3;
+      const noise = (Math.random() - 0.5) * volatility;
+      const move = trend + noise;
+      
+      const open = price;
+      const close = price + move;
+      const high = Math.max(open, close) + Math.random() * volatility * 0.5;
+      const low = Math.min(open, close) - Math.random() * volatility * 0.5;
+      
+      price = close;
+      
+      data.push({
+        time: timestamp,
+        open: Math.round(open * 100) / 100,
+        high: Math.round(high * 100) / 100,
+        low: Math.round(low * 100) / 100,
+        close: Math.round(close * 100) / 100,
+      });
+    }
+  }
+  return data;
+}
+
+function generatePairData(days) {
+  const nqData = generateCorrelatedOHLC(days, 18000, 50, 1);
+  const ymData = [];
+  
+  let ymPrice = 38000;
+  
+  for (let i = 0; i < nqData.length; i++) {
+    const nqBar = nqData[i];
+    const nqMove = nqBar.close - nqBar.open;
+    
+    // YM generally follows NQ but with divergences
+    const correlation = 0.7 + Math.random() * 0.2; // 70-90% correlation
+    const ymMove = nqMove * (38000 / 18000) * correlation + (Math.random() - 0.5) * 30;
+    
+    // Introduce deliberate SMT divergences (~15% of bars)
+    let divergenceFactor = 1;
+    if (Math.random() < 0.15) {
+      divergenceFactor = -0.5; // Opposite move
+    }
+    
+    const open = ymPrice;
+    const close = ymPrice + ymMove * divergenceFactor;
+    const high = Math.max(open, close) + Math.random() * 25;
+    const low = Math.min(open, close) - Math.random() * 25;
+    
+    ymPrice = close;
+    
+    ymData.push({
+      time: nqBar.time,
+      open: Math.round(open * 100) / 100,
+      high: Math.round(high * 100) / 100,
+      low: Math.round(low * 100) / 100,
+      close: Math.round(close * 100) / 100,
+    });
+  }
+  
+  return { nqData, ymData };
+}
+
+// ─── SMT QUARTER SEQUENCE DETECTION ──────────────────────────────────────────
+function detectSMTQuarters(nqData, ymData) {
+  const events = [];
+  const stats = { Q1: { bull: 0, bear: 0 }, Q2: { bull: 0, bear: 0 }, Q3: { bull: 0, bear: 0 }, Q4: { bull: 0, bear: 0 } };
+  
+  // Group into 4HR blocks (4 consecutive 1H candles)
+  const blockSize = 4;
+  
+  for (let blockStart = 0; blockStart + blockSize <= nqData.length; blockStart += blockSize) {
+    const nqBlock = nqData.slice(blockStart, blockStart + blockSize);
+    const ymBlock = ymData.slice(blockStart, blockStart + blockSize);
+    
+    // Compare each quarter to the previous within the block
+    for (let q = 1; q < blockSize; q++) {
+      const prevNQ = nqBlock[q - 1];
+      const currNQ = nqBlock[q];
+      const prevYM = ymBlock[q - 1];
+      const currYM = ymBlock[q];
+      
+      // Bearish SMT: one makes higher high, other fails
+      const nqHH = currNQ.high > prevNQ.high;
+      const ymHH = currYM.high > prevYM.high;
+      const bearishSMT = (nqHH && !ymHH) || (ymHH && !nqHH);
+      
+      // Bullish SMT: one makes lower low, other fails
+      const nqLL = currNQ.low < prevNQ.low;
+      const ymLL = currYM.low < prevYM.low;
+      const bullishSMT = (nqLL && !ymLL) || (ymLL && !nqLL);
+      
+      const quarterLabel = `Q${q + 1}`;
+      
+      if (bearishSMT) {
+        events.push({
+          type: 'bearish',
+          quarter: quarterLabel,
+          time: currNQ.time,
+          nqHigh: currNQ.high,
+          ymHigh: currYM.high,
+          detail: nqHH ? 'NQ made HH, YM failed' : 'YM made HH, NQ failed'
+        });
+        stats[quarterLabel].bear++;
+      }
+      
+      if (bullishSMT) {
+        events.push({
+          type: 'bullish',
+          quarter: quarterLabel,
+          time: currNQ.time,
+          nqLow: currNQ.low,
+          ymLow: currYM.low,
+          detail: nqLL ? 'NQ made LL, YM failed' : 'YM made LL, NQ failed'
+        });
+        stats[quarterLabel].bull++;
+      }
+    }
+  }
+  
+  return { events, stats };
+}
+
+// ─── MARKERS & RENDERING ─────────────────────────────────────────────────────
+function addSMTMarkers(events, nqData, ymData) {
+  const nqMarkers = [];
+  const ymMarkers = [];
+  
+  events.forEach(event => {
+    const marker = {
+      time: event.time,
+      position: event.type === 'bullish' ? 'belowBar' : 'aboveBar',
+      color: event.type === 'bullish' ? '#2ecc71' : '#e74c3c',
+      shape: event.type === 'bullish' ? 'arrowUp' : 'arrowDown',
+      text: `${event.quarter} ${event.type === 'bullish' ? '▲' : '▼'}`,
+    };
+    nqMarkers.push({ ...marker });
+    ymMarkers.push({ ...marker });
+  });
+  
+  // Sort markers by time (required by lightweight-charts)
+  nqMarkers.sort((a, b) => a.time - b.time);
+  ymMarkers.sort((a, b) => a.time - b.time);
+  
+  nqSeries.setMarkers(nqMarkers);
+  ymSeries.setMarkers(ymMarkers);
+}
+
+function renderStats(stats) {
+  const grid = document.getElementById('statsGrid');
+  grid.innerHTML = `
+    <div class="header-cell">Quarter</div>
+    <div class="header-cell" style="color:#2ecc71;">Bull</div>
+    <div class="header-cell" style="color:#e74c3c;">Bear</div>
+  `;
+  
+  let totalBull = 0, totalBear = 0;
+  
+  ['Q1', 'Q2', 'Q3', 'Q4'].forEach(q => {
+    // Note: Q1 won't have events since we compare to previous quarter
+    const bull = stats[q]?.bull || 0;
+    const bear = stats[q]?.bear || 0;
+    totalBull += bull;
+    totalBear += bear;
+    
+    grid.innerHTML += `
+      <div class="cell">${q}</div>
+      <div class="cell bull">${bull}</div>
+      <div class="cell bear">${bear}</div>
+    `;
+  });
+  
+  grid.innerHTML += `
+    <div class="cell" style="color:#ffcc00;font-weight:bold;">TOTAL</div>
+    <div class="cell bull" style="font-weight:bold;">${totalBull}</div>
+    <div class="cell bear" style="font-weight:bold;">${totalBear}</div>
+  `;
+}
+
+function renderEvents(events) {
+  const log = document.getElementById('eventsLog');
+  
+  // Show most recent first, limit to 50
+  const recentEvents = events.slice(-50).reverse();
+  
+  if (recentEvents.length === 0) {
+    log.innerHTML = '<div style="color:#555;font-size:12px;">No SMT events detected</div>';
+    return;
+  }
+  
+  log.innerHTML = recentEvents.map(event => {
+    const date = new Date(event.time * 1000);
+    const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    
+    return `
+      <div class="smt-event ${event.type}">
+        <span class="quarter-tag">${event.quarter}</span>
+        <strong>${event.type === 'bullish' ? 'Bull' : 'Bear'} SMT</strong><br>
+        <span style="color:#666;font-size:10px;">${dateStr} ${timeStr} — ${event.detail}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+// ─── 4HR BLOCK HIGHLIGHTING ──────────────────────────────────────────────────
+function add4HRBlockHighlights(nqData) {
+  // We don't have native box drawing in lightweight-charts,
+  // but we can use background color bands via a histogram or markers
+  // Instead, we'll use vertical line markers at 4HR boundaries
+  const markers = [];
+  for (let i = 0; i < nqData.length; i += 4) {
+    if (i > 0) {
+      markers.push({
+        time: nqData[i].time,
+        position: 'aboveBar',
+        color: 'rgba(100,100,100,0.3)',
+        shape: 'square',
+        text: '|4H|',
+        size: 0.1,
+      });
+    }
+  }
+  return markers;
+}
+
+// ─── MAIN EXECUTION ──────────────────────────────────────────────────────────
+function run() {
+  const days = parseInt(document.getElementById('dataRange').value);
+  const { nqData, ymData } = generatePairData(days);
+  
+  nqSeries.setData(nqData);
+  ymSeries.setData(ymData);
+  
+  const { events, stats } = detectSMTQuarters(nqData, ymData);
+  
+  addSMTMarkers(events, nqData, ymData);
+  renderStats(stats);
+  renderEvents(events);
+  
+  // Fit content
+  chartNQ.timeScale().fitContent();
+  chartYM.timeScale().fitContent();
+  
+  // Sync time scales
+  chartNQ.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+    if (range) chartYM.timeScale().setVisibleLogicalRange(range);
+  });
+  chartYM.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+    if (range) chartNQ.timeScale().setVisibleLogicalRange(range);
+  });
+}
+
+// Event listeners
+document.getElementById('btnGenerate').addEventListener('click', run);
+document.getElementById('dataRange').addEventListener('change', run);
+
+// Handle resize
+window.addEventListener('resize', () => {
+  const newWidth = window.innerWidth - 300;
+  const newHeight = (window.innerHeight - 50) / 2;
+  chartNQ.resize(newWidth, newHeight);
+  chartYM.resize(newWidth, newHeight);
+});
+
+// Initial run
+run();
+</script>
+
+</body>
+</html>

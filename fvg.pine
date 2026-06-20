@@ -1,0 +1,55 @@
+// This Pine Script™ source code is subject to the terms of the Mozilla Public License 2.0
+// © [Astrophile] - FVG
+// Fair Value Gap detection - 3 consecutive candle imbalance
+// Bullish FVG: C3 low > C1 high (gap up)
+// Bearish FVG: C3 high < C1 low (gap down)
+// Drawn as rectangle zone
+
+//@version=6
+indicator("[Astrophile] - FVG", overlay=true, max_boxes_count=500)
+
+// ─── DISPLAY ──────────────────────────────────────────────────────────────────
+int displayDays = input.int(3, "Show Last N Days", minval=1, maxval=20, group="Display")
+
+// ─── BULLISH FVG STYLE ────────────────────────────────────────────────────────
+bool showBullFVG     = input.bool(true, "Show Bullish FVG", group="Bullish FVG")
+color bullFVGColor   = input.color(color.new(#00e676, 80), "Bullish FVG Color", group="Bullish FVG")
+color bullBorderColor = input.color(color.new(#00e676, 50), "Bullish Border Color", group="Bullish FVG")
+int bullBorderWidth  = input.int(1, "Bullish Border Width", minval=0, maxval=3, group="Bullish FVG")
+
+// ─── BEARISH FVG STYLE ────────────────────────────────────────────────────────
+bool showBearFVG     = input.bool(true, "Show Bearish FVG", group="Bearish FVG")
+color bearFVGColor   = input.color(color.new(#ff1744, 80), "Bearish FVG Color", group="Bearish FVG")
+color bearBorderColor = input.color(color.new(#ff1744, 50), "Bearish Border Color", group="Bearish FVG")
+int bearBorderWidth  = input.int(1, "Bearish Border Width", minval=0, maxval=3, group="Bearish FVG")
+
+// ─── BOX SETTINGS ─────────────────────────────────────────────────────────────
+int boxExtend = input.int(5, "Box Extend (bars right)", minval=1, maxval=20, group="Box Style")
+
+// ─── N DAYS DISPLAY FILTER ────────────────────────────────────────────────────
+int displayBars = displayDays * 24
+bool inDisplay = bar_index >= (last_bar_index - displayBars)
+
+// ─── FVG DETECTION ────────────────────────────────────────────────────────────
+// C1 = bar[2], C2 = bar[1], C3 = current bar
+
+// Bullish FVG: C3 low > C1 high (gap between C1 high and C3 low)
+float bullTop = low        // C3 low = top of gap
+float bullBot = high[2]    // C1 high = bottom of gap
+bool bullFVG = bullTop > bullBot
+
+// Bearish FVG: C3 high < C1 low (gap between C3 high and C1 low)
+float bearTop = low[2]     // C1 low = top of gap
+float bearBot = high       // C3 high = bottom of gap
+bool bearFVG = bearBot < bearTop
+
+// ─── DRAW ─────────────────────────────────────────────────────────────────────
+if showBullFVG and bullFVG and inDisplay
+    box.new(bar_index - 1, bullTop, bar_index + boxExtend, bullBot, bgcolor=bullFVGColor, border_color=bullBorderColor, border_width=bullBorderWidth)
+
+if showBearFVG and bearFVG and inDisplay
+    box.new(bar_index - 1, bearTop, bar_index + boxExtend, bearBot, bgcolor=bearFVGColor, border_color=bearBorderColor, border_width=bearBorderWidth)
+
+// ─── ALERTS ──────────────────────────────────────────────────────────────────
+alertcondition(bullFVG, title="Bullish FVG", message="Bullish FVG detected {{ticker}}")
+alertcondition(bearFVG, title="Bearish FVG", message="Bearish FVG detected {{ticker}}")
